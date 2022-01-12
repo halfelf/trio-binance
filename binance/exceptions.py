@@ -1,5 +1,5 @@
 # coding=utf-8
-import json
+import ujson
 
 
 class BinanceAPIException(Exception):
@@ -7,7 +7,7 @@ class BinanceAPIException(Exception):
     def __init__(self, response, status_code, text):
         self.code = 0
         try:
-            json_res = json.loads(text)
+            json_res = ujson.loads(text)
         except ValueError:
             self.message = 'Invalid JSON error message from Binance: {}'.format(response.text)
         else:

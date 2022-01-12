@@ -3,18 +3,14 @@ dist: xenial
 language: python
 
 python:
-  - "3.6"
-  - "3.7"
-  - "3.8"
   - "3.9"
+  - "3.10"
+
+before_install:
+- pip install poetry
 
 install:
-  - pip install -r test-requirements.txt
-  - pip install -r requirements.txt
-  - pip install tox-travis
+- poetry install
 
 script:
-  - tox
-
-after_success:
-  - coveralls
+  - pytest
