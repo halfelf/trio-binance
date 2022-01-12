@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "trio-binance"
 version = "0.1.0"
-description = ""
+description = "trio based asynchronous binance SDK"
 authors = ["Shu Wang <halfelf.ronin@gmail.com>"]
 
 [tool.poetry.dependencies]
