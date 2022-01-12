@@ -1,5 +1,0 @@
-aiohttp
-dateparser
-requests
-ujson
-websockets
