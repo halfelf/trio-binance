@@ -58,9 +58,10 @@ class KeepAliveWebsocket:
         self.msg_send_chan: Optional[trio.MemorySendChannel] = None
         self.msg_recv_chan: Optional[trio.MemoryReceiveChannel] = None
         self.requesting = trio.Event()
+        self.listen_key = None
 
     @classmethod
-    async def create(cls, base_url, stream_name, client=None):
+    async def create(cls, base_url, stream_name=None, client=None):
         """
         @param base_url: websocket base URL
         @param stream_name: stream name
@@ -93,9 +94,18 @@ class KeepAliveWebsocket:
     async def wait_message(self):
         await self.requesting.wait()
 
+    async def keep_put_listen_key(self):
+        while True:
+            await trio.sleep(59 * 60)  # in 60 minutes
+            await self.client.futures_stream_keepalive(self.listen_key)
+
     async def start_websocket(self):
         async with open_websocket_url(self.url) as conn:
             async with trio.open_nursery() as nursery:
+                if self.client:
+                    self.listen_key = self.client.futures_stream_get_listen_key()
+                    nursery.start_soon(self.keep_put_listen_key)
+
                 nursery.start_soon(self._heartbeat, conn)
                 nursery.start_soon(self._get_message, conn)
 
@@ -103,16 +113,19 @@ class KeepAliveWebsocket:
 
 
 class BinanceSocketManager:
-    STREAM_URL = 'wss://stream.binance.com:9443/ws'
-    STREAM_TESTNET_URL = 'wss://testnet.binance.vision/ws'
+    # STREAM_URL = 'wss://stream.binance.com:9443/ws'
+    # STREAM_TESTNET_URL = 'wss://testnet.binance.vision/ws'
     FSTREAM_URL = 'wss://fstream.binance.com:443/ws'
     FSTREAM_TESTNET_URL = 'wss://stream.binancefuture.com/ws'
-    DSTREAM_URL = 'wss://dstream.binance.com:443/ws'
-    DSTREAM_TESTNET_URL = 'wss://dstream.binancefuture.com/ws'
+
+    # DSTREAM_URL = 'wss://dstream.binance.com:443/ws'
+    # DSTREAM_TESTNET_URL = 'wss://dstream.binancefuture.com/ws'
 
     def __init__(self, client=None):
         self.client: Optional[AsyncClient] = client
         self.ws: Dict[StreamName, KeepAliveWebsocket] = {}
+        self.ws_private: Optional[KeepAliveWebsocket] = None
+        self.listen_key = ''
 
     async def __aenter__(self):
         return self
@@ -131,8 +144,20 @@ class BinanceSocketManager:
         try:
             async with trio.open_nursery() as nursery:
                 nursery.start_soon(self.ws[stream_name].start_websocket)
-                await self.ws[stream_name].wait_message()
-                yield self.ws[stream_name].msg_recv_chan
+                await self.ws[stream_name].wait_message()  # wait message to synchronize
+                yield self.ws[stream_name].msg_recv_chan  # return a handler to user
                 nursery.cancel_scope.cancel()  # control has returned from user
         finally:
             await self.ws[stream_name].__aexit__()
+
+    @asynccontextmanager
+    async def subscribe_private(self) -> trio.MemoryReceiveChannel:
+        self.ws_private = await KeepAliveWebsocket.create(self.FSTREAM_URL, client=self.client)
+        try:
+            async with trio.open_nursery() as nursery:
+                nursery.start_soon(self.ws_private.start_websocket)
+                await self.ws_private.wait_message()
+                yield self.ws_private.msg_recv_chan
+                nursery.cancel_scope.cancel()
+        finally:
+            await self.ws_private.__aexit__()

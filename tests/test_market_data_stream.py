@@ -1,8 +1,6 @@
 import trio
 import pytest_trio
-import ujson
 
-from binance.client import AsyncClient
 from binance.streams import BinanceSocketManager
 
 
