@@ -8,7 +8,7 @@ import trio
 import ujson
 from trio_websocket import open_websocket_url, WebSocketConnection
 
-from binance import AsyncClient
+from trio_binance import AsyncClient
 
 
 class StreamName:

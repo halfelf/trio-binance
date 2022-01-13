@@ -2,8 +2,8 @@ import trio
 import pytest_trio
 
 from datetime import datetime, timedelta
-from binance.client import AsyncClient
-from binance.enums import KLINE_INTERVAL_1HOUR
+from trio_binance.client import AsyncClient
+from trio_binance.enums import KLINE_INTERVAL_1HOUR
 
 
 async def test_exchange_info():

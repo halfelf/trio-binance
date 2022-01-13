@@ -1,7 +1,7 @@
 import trio
 import pytest_trio
 
-from binance.streams import BinanceSocketManager
+from trio_binance.streams import BinanceSocketManager
 
 
 async def test_market_data_stream():

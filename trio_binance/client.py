@@ -302,7 +302,7 @@ class AsyncClient(BaseClient):
         try:
             await self.ping()
 
-            # calculate timestamp offset between local and binance server
+            # calculate timestamp offset between local and trio_binance server
             res = await self.get_server_time()
             self.timestamp_offset = res['serverTime'] - int(time.time() * 1000)
 
