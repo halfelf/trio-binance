@@ -3,6 +3,19 @@ name = "trio-binance"
 version = "0.1.0"
 description = "trio based asynchronous binance SDK"
 authors = ["Shu Wang <halfelf.ronin@gmail.com>"]
+keywords = ["binance", "python-trio"]
+readme = "README.rst"
+license = "MIT"
+homepage = "https://github.com/halfelf/trio-binance"
+repository = "https://github.com/halfelf/trio-binance"
+include = [
+    "LICENSE",
+]
+classifiers = [
+    "Framework :: Trio",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
