@@ -287,8 +287,8 @@ class AsyncClient(BaseClient):
             requests_params: Dict[str, str] = None, tld: str = 'com',
             testnet: bool = False
     ):
-        self.session: httpx.AsyncClient = httpx.AsyncClient(http2=True)
         super().__init__(api_key, api_secret, requests_params, tld, testnet)
+        self.session: httpx.AsyncClient = httpx.AsyncClient(http2=True, headers=self._get_headers())
 
     @classmethod
     async def create(
@@ -318,17 +318,6 @@ class AsyncClient(BaseClient):
 
     async def __aexit__(self, *excinfo):
         await self.session.aclose()
-
-    @property
-    def _get_headers(self):
-        headers = {
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.87 Safari/537.36',
-        }
-        if self.API_KEY:
-            assert self.API_KEY
-            headers['X-MBX-APIKEY'] = self.API_KEY
-        return headers
 
     async def close_connection(self):
         if self.session:
