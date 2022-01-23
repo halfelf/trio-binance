@@ -16,6 +16,7 @@ assignees: ''
 -->
 
 <!-- Checked checkbox should look like this: [x] -->
+- [ ] I'm sure this is an issue/bug of this library/SDK, not a programming one.
 - [ ] I know this library only works with async codes, and the difference between trio and asyncio.
 - [ ] I have searched the [issues](https://github.com/halfelf/trio-binance/issues) of this repo and believe that this is not a duplicate.
 
