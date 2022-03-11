@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "trio-binance"
-version = "0.1.1"
+version = "0.1.2"
 description = "trio based asynchronous binance SDK"
 authors = ["Shu Wang <halfelf.ronin@gmail.com>"]
 keywords = ["binance", "python-trio"]
@@ -21,9 +21,9 @@ classifiers = [
 python = "^3.9"
 httpx = "^0.20.0"
 h2 = "^4.1.0"
-trio = "^0.19.0"
+trio = "^0.20.0"
 trio-websocket = "^0.9.2"
-ujson = "^4.2.0"
+ujson = "^5.1.0"
 pytz = "^2021.3"
 dateparser = "^1.1.0"
 
