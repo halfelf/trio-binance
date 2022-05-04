@@ -2,6 +2,7 @@ from typing import Dict, Optional, List, Tuple
 
 import httpx
 import h2
+import params as params
 import trio
 import hashlib
 import hmac
@@ -1151,6 +1152,39 @@ class AsyncClient(BaseClient):
 
     async def futures_create_order(self, **params):
         return await self._request_futures_api('post', 'order', True, data=params)
+
+    async def futures_create_twap_order(self, **params):
+        return await self._request_margin_api('post', 'algo/futures/newOrderTwap', True, data=params)
+
+    async def futures_create_vp_order(self, **params):
+        return await self._request_margin_api('post', 'algo/futures/newOrderVp', True, data=params)
+
+    async def futures_cancel_algo_order(self, **params):
+        return await self._request_margin_api('delete', 'algo/futures/order', True, data=params)
+
+    async def futures_get_algo_open_orders(self, **params):
+        return await self._request_margin_api('get', 'algo/futures/openOrders', True, data=params)
+
+    async def futures_get_algo_historical_orders(self, **params):
+        return await self._request_margin_api('get', 'algo/futures/historicalOrders', True, data=params)
+
+    async def futures_get_algo_suborders(self, **params):
+        return await self._request_margin_api('get', 'algo/futures/subOrders', True, data=params)
+
+    async def get_staking_products(self, **params):
+        return await self._request_margin_api('get', 'staking/productList', True, data=params)
+
+    async def purchase_staking(self, **params):
+        return await self._request_margin_api('post', 'staking/purchase', True, data=params)
+
+    async def redeem_staking(self, **params):
+        return await self._request_margin_api('post', 'staking/redeem', True, data=params)
+
+    async def get_staking_position(self, **params):
+        return await self._request_margin_api('get', 'staking/position', True, data=params)
+
+    # async def get_staking_quota_left(self, **params):
+    #     return await self._request_margin_api('get', 'staking/personalLeftQuota', True, data=params)
 
     async def futures_place_batch_order(self, **params):
         query_string = urlencode(params)
