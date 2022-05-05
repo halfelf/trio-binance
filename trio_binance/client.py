@@ -2,7 +2,6 @@ from typing import Dict, Optional, List, Tuple
 
 import httpx
 import h2
-import params as params
 import trio
 import hashlib
 import hmac
