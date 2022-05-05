@@ -1153,13 +1153,13 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api('post', 'order', True, data=params)
 
     async def futures_create_twap_order(self, **params):
-        return await self._request_margin_api('post', 'algo/futures/newOrderTwap', True, data=params)
+        return await self._request_margin_api('post', 'algo/futures/newOrderTwap', True, force_params=True, data=params)
 
     async def futures_create_vp_order(self, **params):
-        return await self._request_margin_api('post', 'algo/futures/newOrderVp', True, data=params)
+        return await self._request_margin_api('post', 'algo/futures/newOrderVp', True, force_params=True, data=params)
 
     async def futures_cancel_algo_order(self, **params):
-        return await self._request_margin_api('delete', 'algo/futures/order', True, data=params)
+        return await self._request_margin_api('delete', 'algo/futures/order', True, force_params=True, data=params)
 
     async def futures_get_algo_open_orders(self, **params):
         return await self._request_margin_api('get', 'algo/futures/openOrders', True, data=params)
@@ -1174,10 +1174,10 @@ class AsyncClient(BaseClient):
         return await self._request_margin_api('get', 'staking/productList', True, data=params)
 
     async def purchase_staking(self, **params):
-        return await self._request_margin_api('post', 'staking/purchase', True, data=params)
+        return await self._request_margin_api('post', 'staking/purchase', True, force_params=True, data=params)
 
     async def redeem_staking(self, **params):
-        return await self._request_margin_api('post', 'staking/redeem', True, data=params)
+        return await self._request_margin_api('post', 'staking/redeem', True, force_params=True, data=params)
 
     async def get_staking_position(self, **params):
         return await self._request_margin_api('get', 'staking/position', True, data=params)
