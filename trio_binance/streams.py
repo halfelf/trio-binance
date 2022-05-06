@@ -70,7 +70,7 @@ class KeepAliveWebsocket:
         if not stream_name:
             self.listen_key = await self.client.futures_stream_get_listen_key()
             stream_name = self.listen_key
-            self.url = posixpath.join(base_url, str(stream_name))
+        self.url = posixpath.join(base_url, str(stream_name))
         return self
 
     async def __aenter__(self):
@@ -103,7 +103,6 @@ class KeepAliveWebsocket:
             await self.client.futures_stream_keepalive(self.listen_key)
 
     async def start_websocket(self):
-        print(f"start websocket to {self.url}")
         async with open_websocket_url(self.url) as conn:
             async with trio.open_nursery() as nursery:
                 if self.listen_key:
