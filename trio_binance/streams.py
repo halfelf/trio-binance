@@ -46,11 +46,10 @@ class StreamName:
 
 
 class KeepAliveWebsocket:
-    def __init__(self, base_url, stream_name, client=None):
+    def __init__(self, base_url, stream_name=None, client=None):
         """
         DO NOT USE THIS TO CREATE INSTANCE
         """
-        self.url = posixpath.join(base_url, str(stream_name))
         self.client: Optional[AsyncClient] = client
         self.conn: Optional[WebSocketConnection] = None
         self.commands_send_chan, self.commands_recv_chan = trio.open_memory_channel(100)
@@ -58,7 +57,7 @@ class KeepAliveWebsocket:
         self.msg_send_chan: Optional[trio.MemorySendChannel] = None
         self.msg_recv_chan: Optional[trio.MemoryReceiveChannel] = None
         self.requesting = trio.Event()
-        self.listen_key = None
+        self.listen_key, self.url = None, None
 
     @classmethod
     async def create(cls, base_url, stream_name=None, client=None):
@@ -68,6 +67,10 @@ class KeepAliveWebsocket:
         @param client: only used in user data stream
         """
         self = cls(base_url, stream_name, client)
+        if not stream_name:
+            self.listen_key = await self.client.futures_stream_get_listen_key()
+            stream_name = self.listen_key
+            self.url = posixpath.join(base_url, str(stream_name))
         return self
 
     async def __aenter__(self):
@@ -100,10 +103,10 @@ class KeepAliveWebsocket:
             await self.client.futures_stream_keepalive(self.listen_key)
 
     async def start_websocket(self):
+        print(f"start websocket to {self.url}")
         async with open_websocket_url(self.url) as conn:
             async with trio.open_nursery() as nursery:
-                if self.client:
-                    self.listen_key = await self.client.futures_stream_get_listen_key()
+                if self.listen_key:
                     nursery.start_soon(self.keep_put_listen_key)
 
                 nursery.start_soon(self._heartbeat, conn)
@@ -125,7 +128,6 @@ class BinanceSocketManager:
         self.client: Optional[AsyncClient] = client
         self.ws: Dict[StreamName, KeepAliveWebsocket] = {}
         self.ws_private: Optional[KeepAliveWebsocket] = None
-        self.listen_key = ''
 
     async def __aenter__(self):
         return self
