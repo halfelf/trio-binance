@@ -103,7 +103,7 @@ class KeepAliveWebsocket:
         async with open_websocket_url(self.url) as conn:
             async with trio.open_nursery() as nursery:
                 if self.client:
-                    self.listen_key = self.client.futures_stream_get_listen_key()
+                    self.listen_key = await self.client.futures_stream_get_listen_key()
                     nursery.start_soon(self.keep_put_listen_key)
 
                 nursery.start_soon(self._heartbeat, conn)
