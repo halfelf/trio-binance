@@ -1367,3 +1367,41 @@ class AsyncClient(BaseClient):
 
     async def get_c2c_trade_history(self, **params):
         return await self._request_margin_api('get', 'c2c/orderMatch/listUserOrderHistory', signed=True, data=params)
+
+    # Crypto Loans Endpoints
+
+    async def get_crypto_loans_income_history(self, **params):
+        return await self._request_margin_api('get', 'loan/income', signed=True, data=params)
+
+    async def borrow_crypto_loans(self, **params):
+        return await self._request_margin_api('post', 'loan/borrow', signed=True, data=params)
+
+    async def get_loan_borrow_history(self, **params):
+        return await self._request_margin_api('get', 'loan/borrow/history', signed=True, data=params)
+
+    async def get_loan_ongoing_orders(self, **params):
+        return await self._request_margin_api('get', 'loan/ongoing/orders', signed=True, data=params)
+
+    async def repay_crypto_loans(self, **params):
+        return await self._request_margin_api('post', 'loan/repay', signed=True, data=params)
+
+    async def get_loan_repayment_history(self, **params):
+        return await self._request_margin_api('get', 'loan/repay/history', signed=True, data=params)
+
+    async def crypto_loan_adjust_ltv(self, **params):
+        return await self._request_margin_api('post', 'loan/adjust/ltv', signed=True, data=params)
+
+    async def get_loan_ltv_adjustments_history(self, **params):
+        return await self._request_margin_api('get', 'loan/ltv/adjustments/history', signed=True, data=params)
+
+    async def get_loanable_assets_data(self, **params):
+        return await self._request_margin_api('get', 'loan/loanable/data', signed=True, data=params)
+
+    async def get_collateral_assets_data(self, **params):
+        return await self._request_margin_api('get', 'loan/collateral/data', signed=True, data=params)
+
+    async def get_collateral_repay_rate(self, **params):
+        return await self._request_margin_api('get', 'loan/repay/collateral/rate', signed=True, data=params)
+
+    async def customize_crypto_loan_margin_call(self, **params):
+        return await self._request_margin_api('post', 'loan/customize/margin_call', signed=True, data=params)
