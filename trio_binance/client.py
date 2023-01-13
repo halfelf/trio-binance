@@ -1023,16 +1023,22 @@ class AsyncClient(BaseClient):
         return await self._request_margin_api('get', 'staking/productList', True, data=params)
 
     async def purchase_staking(self, **params):
-        return await self._request_margin_api('post', 'staking/purchase', True, force_params=True, data=params)
+        return await self._request_margin_api('post', 'staking/purchase', True, data=params)
 
     async def redeem_staking(self, **params):
-        return await self._request_margin_api('post', 'staking/redeem', True, force_params=True, data=params)
+        return await self._request_margin_api('post', 'staking/redeem', True, data=params)
 
     async def get_staking_position(self, **params):
         return await self._request_margin_api('get', 'staking/position', True, data=params)
 
-    # async def get_staking_quota_left(self, **params):
-    #     return await self._request_margin_api('get', 'staking/personalLeftQuota', True, data=params)
+    async def get_staking_purchase_history(self, **params):
+        return self._request_margin_api('get', 'staking/purchaseRecord', True, data=params)
+
+    async def set_auto_staking(self, **params):
+        return await self._request_margin_api('post', 'staking/setAutoStaking', True, data=params)
+
+    async def get_personal_left_quota(self, **params):
+        return await self._request_margin_api('get', 'staking/personalLeftQuota', True, data=params)
 
     async def futures_place_batch_order(self, **params):
         query_string = urlencode(params)
