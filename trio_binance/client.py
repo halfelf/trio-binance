@@ -9,9 +9,8 @@ import time
 from operator import itemgetter
 from urllib.parse import urlencode
 
-from .helpers import interval_to_milliseconds, convert_ts_str
+from .helpers import convert_ts_str
 from .exceptions import BinanceAPIException, BinanceRequestException, NotImplementedException
-from .enums import HistoricalKlinesType
 
 
 class BaseClient:
@@ -493,148 +492,6 @@ class AsyncClient(BaseClient):
     async def get_klines(self, **params) -> Dict:
         return await self._get('klines', data=params, version=self.PRIVATE_API_VERSION)
 
-    async def _klines(self, klines_type: HistoricalKlinesType = HistoricalKlinesType.SPOT, **params) -> Dict:
-        if 'endTime' in params and not params['endTime']:
-            del params['endTime']
-        if HistoricalKlinesType.SPOT == klines_type:
-            return await self.get_klines(**params)
-        elif HistoricalKlinesType.FUTURES == klines_type:
-            return await self.futures_klines(**params)
-        else:
-            raise NotImplementedException(klines_type)
-
-    async def _get_earliest_valid_timestamp(self, symbol, interval,
-                                            klines_type: HistoricalKlinesType = HistoricalKlinesType.SPOT):
-        kline = await self._klines(
-            klines_type=klines_type,
-            symbol=symbol,
-            interval=interval,
-            limit=1,
-            startTime=0,
-            endTime=int(time.time() * 1000)
-        )
-        return kline[0][0]
-
-    async def get_historical_klines(self, symbol, interval, start_str, end_str=None, limit=500,
-                                    klines_type: HistoricalKlinesType = HistoricalKlinesType.SPOT):
-        return await self._historical_klines(symbol, interval, start_str, end_str=end_str, limit=limit,
-                                             klines_type=klines_type)
-
-    async def _historical_klines(self, symbol, interval, start_str, end_str=None, limit=500,
-                                 klines_type: HistoricalKlinesType = HistoricalKlinesType.SPOT):
-
-        # init our list
-        output_data = []
-
-        # convert interval to useful value in seconds
-        timeframe = interval_to_milliseconds(interval)
-
-        # convert our date strings to milliseconds
-        start_ts = convert_ts_str(start_str)
-
-        # establish first available start timestamp
-        first_valid_ts = await self._get_earliest_valid_timestamp(symbol, interval, klines_type)
-        start_ts = max(start_ts, first_valid_ts)
-
-        # if an end time was passed convert it
-        end_ts = convert_ts_str(end_str)
-
-        idx = 0
-        while True:
-            # fetch the klines from start_ts up to max 500 entries or the end_ts if set
-            temp_data = await self._klines(
-                klines_type=klines_type,
-                symbol=symbol,
-                interval=interval,
-                limit=limit,
-                startTime=start_ts,
-                endTime=end_ts
-            )
-
-            # handle the case where exactly the limit amount of data was returned last loop
-            if not len(temp_data):
-                break
-
-            # append this loops data to our output data
-            output_data += temp_data
-
-            # set our start timestamp using the last value in the array
-            start_ts = temp_data[-1][0]
-
-            idx += 1
-            # check if we received less than the required limit and exit the loop
-            if len(temp_data) < limit:
-                # exit the while loop
-                break
-
-            # increment next call by our timeframe
-            start_ts += timeframe
-
-            # sleep after every 3rd call to be kind to the API
-            if idx % 3 == 0:
-                await trio.sleep(1)
-
-        return output_data
-
-    async def get_historical_klines_generator(self, symbol, interval, start_str, end_str=None,
-                                              klines_type: HistoricalKlinesType = HistoricalKlinesType.SPOT):
-        return self._historical_klines_generator(symbol, interval, start_str, end_str=end_str, klines_type=klines_type)
-
-    async def _historical_klines_generator(self, symbol, interval, start_str, end_str=None,
-                                           klines_type: HistoricalKlinesType = HistoricalKlinesType.SPOT):
-
-        # setup the max limit
-        limit = 500
-
-        # convert interval to useful value in seconds
-        timeframe = interval_to_milliseconds(interval)
-
-        # convert our date strings to milliseconds
-        start_ts = convert_ts_str(start_str)
-
-        # establish first available start timestamp
-        first_valid_ts = await self._get_earliest_valid_timestamp(symbol, interval, klines_type)
-        start_ts = max(start_ts, first_valid_ts)
-
-        # if an end time was passed convert it
-        end_ts = convert_ts_str(end_str)
-
-        idx = 0
-        while True:
-            # fetch the klines from start_ts up to max 500 entries or the end_ts if set
-            output_data = await self._klines(
-                klines_type=klines_type,
-                symbol=symbol,
-                interval=interval,
-                limit=limit,
-                startTime=start_ts,
-                endTime=end_ts
-            )
-
-            # handle the case where exactly the limit amount of data was returned last loop
-            if not len(output_data):
-                break
-
-            # yield data
-            for o in output_data:
-                yield o
-
-            # set our start timestamp using the last value in the array
-            start_ts = output_data[-1][0]
-
-            idx += 1
-            # check if we received less than the required limit and exit the loop
-            if len(output_data) < limit:
-                # exit the while loop
-                break
-
-            # increment next call by our timeframe
-            start_ts += timeframe
-
-            # sleep after every 3rd call to be kind to the API
-            if idx % 3 == 0:
-                await trio.sleep(1)
-
     async def get_avg_price(self, **params):
         return await self._get('avgPrice', data=params, version=self.PRIVATE_API_VERSION)
 
@@ -1102,16 +959,8 @@ class AsyncClient(BaseClient):
     async def futures_klines(self, **params):
         return await self._request_futures_api('get', 'klines', data=params)
 
-    async def futures_continous_klines(self, **params):
+    async def futures_continuous_klines(self, **params):
         return await self._request_futures_api('get', 'continuousKlines', data=params)
-
-    async def futures_historical_klines(self, symbol, interval, start_str, end_str=None, limit=500):
-        return self._historical_klines(symbol, interval, start_str, end_str=end_str, limit=limit,
-                                       klines_type=HistoricalKlinesType.FUTURES)
-
-    async def futures_historical_klines_generator(self, symbol, interval, start_str, end_str=None):
-        return self._historical_klines_generator(symbol, interval, start_str, end_str=end_str,
-                                                 klines_type=HistoricalKlinesType.FUTURES)
 
     async def futures_mark_price(self, **params):
         return await self._request_futures_api('get', 'premiumIndex', data=params)

@@ -59,11 +59,6 @@ WEBSOCKET_DEPTH_10 = '10'
 WEBSOCKET_DEPTH_20 = '20'
 
 
-class HistoricalKlinesType(Enum):
-    SPOT = 1
-    FUTURES = 2
-
-
 class FuturesType(Enum):
     USD_M = 1
     COIN_M = 2
