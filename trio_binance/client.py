@@ -336,7 +336,7 @@ class AsyncClient(BaseClient):
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
         """
-        if not str(response.status_code).startswith('2'):
+        if response.is_error:
             raise BinanceAPIException(response, response.status_code, response.text)
         try:
             return response.json()
