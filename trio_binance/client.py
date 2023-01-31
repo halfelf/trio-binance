@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Union
 
 import httpx
 import h2
@@ -14,7 +14,7 @@ from .exceptions import BinanceAPIException, BinanceRequestException, NotImpleme
 
 
 class BaseClient:
-    API_URL = 'https://api.binance.{}/api'
+    API_URL = 'https://api{}.binance.{}/api'
     API_TESTNET_URL = 'https://testnet.binance.vision/api'
     MARGIN_API_URL = 'https://api.binance.{}/sapi'
     WEBSITE_URL = 'https://www.binance.{}'
@@ -121,8 +121,8 @@ class BaseClient:
 
     def __init__(
             self, api_key: Optional[str] = None, api_secret: Optional[str] = None,
-            requests_params: Dict[str, str] = None, tld: str = 'com',
-            testnet: bool = False
+            requests_params: Dict[str, str] = None, api_cluster_id: Union[int, str] = "", 
+            tld: str = 'com', testnet: bool = False
     ):
         """Binance API Client constructor
 
@@ -132,13 +132,15 @@ class BaseClient:
         :type api_secret: str.
         :param requests_params: optional - Dictionary of requests params to use for all calls
         :type requests_params: dict.
+        :param api_cluster_id: optional - Cluster ID for API
+        :type api_cluster_id: str or int
         :param testnet: Use testnet environment - only available for vanilla options at the moment
         :type testnet: bool
 
         """
 
         self.tld = tld
-        self.API_URL = self.API_URL.format(tld)
+        self.API_URL = self.API_URL.format(api_cluster_id, tld)
         self.MARGIN_API_URL = self.MARGIN_API_URL.format(tld)
         self.WEBSITE_URL = self.WEBSITE_URL.format(tld)
         self.FUTURES_URL = self.FUTURES_URL.format(tld)
@@ -283,20 +285,20 @@ class BaseClient:
 class AsyncClient(BaseClient):
     def __init__(
             self, api_key: Optional[str] = None, api_secret: Optional[str] = None,
-            requests_params: Dict[str, str] = None, tld: str = 'com',
-            testnet: bool = False
+            requests_params: Dict[str, str] = None, api_cluster_id: Union[str, int] = "",
+            tld: str = 'com', testnet: bool = False
     ):
-        super().__init__(api_key, api_secret, requests_params, tld, testnet)
+        super().__init__(api_key, api_secret, requests_params, api_cluster_id, tld, testnet)
         self.session: httpx.AsyncClient = httpx.AsyncClient(http2=True, headers=self._get_headers())
 
     @classmethod
     async def create(
             cls, api_key: Optional[str] = None, api_secret: Optional[str] = None,
-            requests_params: Dict[str, str] = None, tld: str = 'com',
-            testnet: bool = False
+            requests_params: Dict[str, str] = None, api_cluster_id: Union[str, int] = "",
+            tld: str = 'com', testnet: bool = False
     ):
 
-        self = cls(api_key, api_secret, requests_params, tld, testnet)
+        self = cls(api_key, api_secret, requests_params, api_cluster_id, tld, testnet)
 
         try:
             await self.ping()
