@@ -950,6 +950,15 @@ class AsyncClient(BaseClient):
     async def futures_exchange_info(self):
         return await self._request_futures_api("get", "exchangeInfo")
 
+    async def futures_get_symbol_info(self, symbol) -> Optional[Dict]:
+        res = await self.get_exchange_info()
+
+        for item in res["symbols"]:
+            if item["symbol"] == symbol.upper():
+                return item
+
+        return None
+
     async def futures_order_book(self, **params):
         return await self._request_futures_api("get", "depth", data=params)
 
@@ -1130,6 +1139,15 @@ class AsyncClient(BaseClient):
 
     async def futures_coin_exchange_info(self):
         return await self._request_futures_coin_api("get", "exchangeInfo")
+
+    async def futures_coin_get_symbol_info(self, symbol) -> Optional[Dict]:
+        res = await self.get_exchange_info()
+
+        for item in res["symbols"]:
+            if item["symbol"] == symbol.upper():
+                return item
+
+        return None
 
     async def futures_coin_order_book(self, **params):
         return await self._request_futures_coin_api("get", "depth", data=params)
