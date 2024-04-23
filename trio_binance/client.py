@@ -39,6 +39,7 @@ class BaseClient:
     FUTURES_API_VERSION = "v1"
     FUTURES_API_VERSION2 = "v2"
     OPTIONS_API_VERSION = "v1"
+    PORTFOLIO_MARGIN_VERSION = "v1"
 
     REQUEST_TIMEOUT: float = 10
 
@@ -222,6 +223,11 @@ class BaseClient:
             url = self.OPTIONS_TESTNET_URL
         return url + "/" + self.OPTIONS_API_VERSION + "/" + path
 
+    def _create_portfolio_margin_api_uri(self, path: str, version: int = 1) -> str:
+        url = self.PORTFOLIO_MARGIN_URL
+        options = {1: self.PORTFOLIO_MARGIN_VERSION}
+        return url + "/" + options[version] + "/" + path
+
     def _generate_signature(self, data: Dict) -> str:
         ordered_data = self._order_params(data)
         query_string = "&".join([f"{d[0]}={d[1]}" for d in ordered_data])
@@ -400,6 +406,11 @@ class AsyncClient(BaseClient):
 
     async def _request_margin_api(self, method, path, signed=False, **kwargs) -> Dict:
         uri = self._create_margin_api_uri(path)
+
+        return await self._request(method, uri, signed, **kwargs)
+
+    async def _request_portfolio_margin_api(self, method, path, signed=False, version: int = 1, **kwargs) -> Dict:
+        uri = self._create_portfolio_margin_api_uri(path, version)
 
         return await self._request(method, uri, signed, **kwargs)
 
@@ -675,13 +686,11 @@ class AsyncClient(BaseClient):
         res = await self._post("userDataStream", False, data={})
         return res["listenKey"]
 
-    async def stream_keepalive(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._put("userDataStream", False, data=params)
+    async def stream_keepalive(self):
+        return await self._put("userDataStream", False, data={})
 
-    async def stream_close(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._delete("userDataStream", False, data=params)
+    async def stream_close(self):
+        return await self._delete("userDataStream", False, data={})
 
     # Margin Trading Endpoints
     async def get_margin_account(self, **params):
@@ -800,13 +809,11 @@ class AsyncClient(BaseClient):
         res = await self._request_margin_api("post", "userDataStream", signed=False, data={})
         return res["listenKey"]
 
-    async def margin_stream_keepalive(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._request_margin_api("put", "userDataStream", signed=False, data=params)
+    async def margin_stream_keepalive(self):
+        return await self._request_margin_api("put", "userDataStream", signed=False, data={})
 
-    async def margin_stream_close(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._request_margin_api("delete", "userDataStream", signed=False, data=params)
+    async def margin_stream_close(self):
+        return await self._request_margin_api("delete", "userDataStream", signed=False, data={})
 
         # Isolated margin
 
@@ -1107,13 +1114,11 @@ class AsyncClient(BaseClient):
         res = await self._request_futures_api("post", "listenKey", signed=False, data={})
         return res["listenKey"]
 
-    async def futures_stream_keepalive(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._request_futures_api("put", "listenKey", signed=False, data=params)
+    async def futures_stream_keepalive(self):
+        return await self._request_futures_api("put", "listenKey", signed=False, data={})
 
-    async def futures_stream_close(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._request_futures_api("delete", "listenKey", signed=False, data=params)
+    async def futures_stream_close(self):
+        return await self._request_futures_api("delete", "listenKey", signed=False, data={})
 
     # COIN Futures API
 
@@ -1248,13 +1253,11 @@ class AsyncClient(BaseClient):
         res = await self._request_futures_coin_api("post", "listenKey", signed=False, data={})
         return res["listenKey"]
 
-    async def futures_coin_stream_keepalive(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._request_futures_coin_api("put", "listenKey", signed=False, data=params)
+    async def futures_coin_stream_keepalive(self):
+        return await self._request_futures_coin_api("put", "listenKey", signed=False, data={})
 
-    async def futures_coin_stream_close(self, listenKey):
-        params = {"listenKey": listenKey}
-        return await self._request_futures_coin_api("delete", "listenKey", signed=False, data=params)
+    async def futures_coin_stream_close(self):
+        return await self._request_futures_coin_api("delete", "listenKey", signed=False, data={})
 
     async def get_all_coins_info(self, **params):
         return await self._request_margin_api("get", "capital/config/getall", True, data=params)
@@ -1356,9 +1359,250 @@ class AsyncClient(BaseClient):
         return await self._request_margin_api("get", "fiat/orders", signed=True, data=params)
 
     async def get_fiat_payments_history(self, **params):
-        return await self._request_margin_api('get', 'fiat/payments', signed=True, data=params)
-        return await self._request_margin_api(
-            "get", "fiat/payments", signed=True, data=params
+        return await self._request_margin_api("get", "fiat/payments", signed=True, data=params)
+
+    # Portfolio Margin Endpoints
+    async def portfolio_margin_ping(self):
+        return await self._request_portfolio_margin_api("get", "ping")
+
+    async def portfolio_margin_new_um_order(self, **params):
+        return await self._request_portfolio_margin_api("post", "um/order", signed=True, data=params)
+
+    async def portfolio_margin_new_cm_order(self, **params):
+        return await self._request_portfolio_margin_api("post", "cm/order", signed=True, data=params)
+
+    async def portfolio_margin_new_margin_order(self, **params):
+        return await self._request_portfolio_margin_api("post", "margin/order", signed=True, data=params)
+
+    async def portfolio_margin_margin_account_borrow(self, **params):
+        return await self._request_portfolio_margin_api("post", "marginLoan", signed=True, data=params)
+
+    async def portfolio_margin_margin_account_repay(self, **params):
+        return await self._request_portfolio_margin_api("post", "repayLoan", signed=True, data=params)
+
+    async def portfolio_margin_margin_account_new_oco(self, **params):
+        return await self._request_portfolio_margin_api("post", "margin/order/oco", signed=True, data=params)
+
+    async def portfolio_margin_new_um_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("post", "um/conditional/order", signed=True, data=params)
+
+    async def portfolio_margin_new_cm_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("post", "cm/conditional/order", signed=True, data=params)
+
+    async def portfolio_margin_cancel_um_order(self, **params):
+        return await self._request_portfolio_margin_api("delete", "um/order", signed=True, data=params)
+
+    async def portfolio_margin_cancel_all_um_orders(self, **params):
+        return await self._request_portfolio_margin_api("delete", "um/allOpenOrders", signed=True, data=params)
+
+    async def portfolio_margin_cancel_cm_order(self, **params):
+        return await self._request_portfolio_margin_api("delete", "cm/order", signed=True, data=params)
+
+    async def portfolio_margin_cancel_all_cm_orders(self, **params):
+        return await self._request_portfolio_margin_api("delete", "cm/allOpenOrders", signed=True, data=params)
+
+    async def portfolio_margin_cancel_margin_account_order(self, **params):
+        return await self._request_portfolio_margin_api("delete", "margin/order", signed=True, data=params)
+
+    async def portfolio_margin_cancel_margin_account_all_orders(self, **params):
+        return await self._request_portfolio_margin_api("delete", "margin/allOpenOrders", signed=True, data=params)
+
+    async def portfolio_margin_cancel_margin_oco_orders(self, **params):
+        return await self._request_portfolio_margin_api("delete", "margin/orderList", signed=True, data=params)
+
+    async def portfolio_margin_cancel_um_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("delete", "um/conditional/order", signed=True, data=params)
+
+    async def portfolio_margin_cancel_all_um_conditional_orders(self, **params):
+        return await self._request_portfolio_margin_api(
+            "delete", "um/conditional/allOpenOrders", signed=True, data=params
+        )
+
+    async def portfolio_margin_cancel_cm_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("delete", "cm/conditional/order", signed=True, data=params)
+
+    async def portfolio_margin_cancel_all_cm_conditional_orders(self, **params):
+        return await self._request_portfolio_margin_api(
+            "delete", "cm/conditional/allOpenOrders", signed=True, data=params
+        )
+
+    async def portfolio_margin_query_um_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/order", signed=True, data=params)
+
+    async def portfolio_margin_query_current_um_open_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/openOrder", signed=True, data=params)
+
+    async def portfolio_margin_query_all_current_um_open_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/openOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_all_um_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/allOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_cm_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/order", signed=True, data=params)
+
+    async def portfolio_margin_query_current_cm_open_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/openOrder", signed=True, data=params)
+
+    async def portfolio_margin_query_all_current_cm_open_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/openOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_all_cm_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/allOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_current_um_open_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/conditional/openOrder", signed=True, data=params)
+
+    async def portfolio_margin_query_all_current_um_open_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/conditional/openOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_um_conditional_order_history(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/conditional/orderHistory", signed=True, data=params)
+
+    async def portfolio_margin_query_all_um_conditional_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/conditional/allOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_current_cm_open_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/conditional/openOrder", signed=True, data=params)
+
+    async def portfolio_margin_query_all_current_cm_open_conditional_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/conditional/openOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_cm_conditional_order_history(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/conditional/orderHistory", signed=True, data=params)
+
+    async def portfolio_margin_query_all_cm_conditional_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/conditional/allOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_margin_account_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/order", signed=True, data=params)
+
+    async def portfolio_margin_query_current_margin_open_order(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/openOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_all_margin_account_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/allOrders", signed=True, data=params)
+
+    async def portfolio_margin_query_margin_account_oco(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/orderList", signed=True, data=params)
+
+    async def portfolio_margin_query_margin_account_all_oco(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/allOrderList", signed=True, data=params)
+
+    async def portfolio_margin_query_margin_account_open_oco(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/openOrderList", signed=True, data=params)
+
+    async def portfolio_margin_margin_account_trade_list(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/myTrades", signed=True, data=params)
+
+    async def portfolio_margin_balance(self, **params):
+        return await self._request_portfolio_margin_api("get", "balance", signed=True, data=params)
+
+    async def portfolio_margin_account(self, **params):
+        return await self._request_portfolio_margin_api("get", "account", signed=True, data=params)
+
+    async def portfolio_margin_max_borrowable(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/maxBorrowable", signed=True, data=params)
+
+    async def portfolio_margin_max_withdraw(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/maxWithdraw", signed=True, data=params)
+
+    async def portfolio_margin_um_position_information(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/positionRisk", signed=True, data=params)
+
+    async def portfolio_margin_cm_position_information(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/positionRisk", signed=True, data=params)
+
+    async def portfolio_margin_um_leverage(self, **params):
+        return await self._request_portfolio_margin_api("post", "um/leverage", signed=True, data=params)
+
+    async def portfolio_margin_cm_leverage(self, **params):
+        return await self._request_portfolio_margin_api("post", "cm/leverage", signed=True, data=params)
+
+    async def portfolio_margin_change_um_position_mode(self, **params):
+        return await self._request_portfolio_margin_api("post", "um/positionSide/dual", signed=True, data=params)
+
+    async def portfolio_margin_change_cm_position_mode(self, **params):
+        return await self._request_portfolio_margin_api("post", "cm/positionSide/dual", signed=True, data=params)
+
+    async def portfolio_margin_um_position_mode(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/positionSide/dual", signed=True, data=params)
+
+    async def portfolio_margin_cm_position_mode(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/positionSide/dual", signed=True, data=params)
+
+    async def portfolio_margin_um_account_trade_list(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/userTrades", signed=True, data=params)
+
+    async def portfolio_margin_cm_account_trade_list(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/userTrades", signed=True, data=params)
+
+    async def portfolio_margin_um_leverage_bracket(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/leverageBracket", signed=True, data=params)
+
+    async def portfolio_margin_cm_leverage_bracket(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/leverageBracket", signed=True, data=params)
+
+    async def portfolio_margin_user_force_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/forceOrders", signed=True, data=params)
+
+    async def portfolio_margin_um_force_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/forceOrders", signed=True, data=params)
+
+    async def portfolio_margin_cm_force_orders(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/forceOrders", signed=True, data=params)
+
+    async def portfolio_margin_um_trading_quantitative_rules(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/apiTradingStatus", signed=True, data=params)
+
+    async def portfolio_margin_um_commission_rate(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/commissionRate", signed=True, data=params)
+
+    async def portfolio_margin_cm_commission_rate(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/commissionRate", signed=True, data=params)
+
+    async def portfolio_margin_margin_loan_record(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/marginLoan", signed=True, data=params)
+
+    async def portfolio_margin_margin_repay_record(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/repayLoan", signed=True, data=params)
+
+    async def portfolio_margin_margin_interest_history(self, **params):
+        return await self._request_portfolio_margin_api("get", "margin/marginInterestHistory", signed=True, data=params)
+
+    async def portfolio_margin_negative_balance_interest_history(self, **params):
+        return await self._request_portfolio_margin_api("get", "portfolio/interest-history", signed=True, data=params)
+
+    async def portfolio_margin_fund_auto_collection(self, **params):
+        return await self._request_portfolio_margin_api("post", "auto-collection", signed=True, data=params)
+
+    async def portfolio_margin_fund_collection_by_asset(self, **params):
+        return await self._request_portfolio_margin_api("post", "asset-collection", signed=True, data=params)
+
+    async def portfolio_margin_bnb_transfer(self, **params):
+        return await self._request_portfolio_margin_api("post", "bnb-transfer", signed=True, data=params)
+
+    async def portfolio_margin_um_income_history(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/income", signed=True, data=params)
+
+    async def portfolio_margin_cm_income_history(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/income", signed=True, data=params)
+
+    async def portfolio_margin_um_account_detail(self, **params):
+        return await self._request_portfolio_margin_api("get", "um/account", signed=True, data=params)
+
+    async def portfolio_margin_cm_account_detail(self, **params):
+        return await self._request_portfolio_margin_api("get", "cm/account", signed=True, data=params)
+
+    async def portfolio_margin_change_auto_repay_futures_status(self, **params):
+        return await self._request_portfolio_margin_api("post", "repay-futures-switch", signed=True, data=params)
+
+    async def portfolio_margin_get_auto_repay_futures_status(self, **params):
+        return await self._request_portfolio_margin_api("get", "repay-futures-switch", signed=True, data=params)
+
+    async def portfolio_margin_repay_futures_negative_balance(self, **params):
+        return await self._request_portfolio_margin_api(
+            "post", "repay-futures-negative-balance", signed=True, data=params
         )
 
     async def portfolio_margin_um_position_adl_quantile(self, **params):
@@ -1366,6 +1610,22 @@ class AsyncClient(BaseClient):
 
     async def portfolio_margin_cm_position_adl_quantile(self, **params):
         return await self._request_portfolio_margin_api("get", "cm/adlQuantile", signed=True, data=params)
+
+    async def portfolio_margin_stream_get_listen_key(self) -> str:
+        res = await self._request_portfolio_margin_api("post", "listenKey", signed=False, data={})
+        return res["listenKey"]
+
+    async def portfolio_margin_stream_keepalive(self) -> dict:
+        """
+        @return: empty dict {}
+        """
+        return await self._request_portfolio_margin_api("put", "listenKey", signed=False, data={})
+
+    async def portfolio_margin_stream_close(self) -> dict:
+        """
+        @return: empty dict {}
+        """
+        return await self._request_portfolio_margin_api("delete", "listenKey", signed=False, data={})
 
     # C2C Endpoints
 

@@ -1,165 +1,101 @@
-import struct
-import random
-import posixpath
-from typing import Dict, Optional
 from contextlib import asynccontextmanager
+from random import randint
 
 import trio
-import ujson
+import trio_websocket
 import orjson
-from trio_websocket import open_websocket_url, WebSocketConnection
+from trio_websocket import open_websocket_url
 
 from trio_binance import AsyncClient
 
 
-class StreamName:
-    def __init__(self, **kwargs):
-        self.symbol = kwargs['symbol'].upper()
-        self.stream_type = kwargs.get('stream_type')
+class BinanceSocketManager:
+    URLS = {
+        "main": {
+            "spot": "wss://stream.binance.com:9443",
+            "linear": "wss://fstream.binance.com",
+            "inverse": "wss://dstream.binance.com",
+            "portfolio": "wss://fstream.binance.com/pm",
+        },
+        "test": {},
+    }
 
-        if self.stream_type == 'continuousKline':
-            self.params_str = kwargs.get('interval', '1m')
-            self.contract_type = kwargs.get('contract_type', 'perpetual')
-        elif self.stream_type == 'depth':
-            self.params_str = kwargs.get('update_speed')
-            self.contract_type = None
-
-    def __str__(self):
-        if self.stream_type == 'continuousKline':
-            return f"{self.symbol.lower()}_{self.contract_type.lower()}@" \
-                   f"{self.stream_type}_{self.params_str}"
-        else:
-            s = f"{self.symbol.lower()}@{self.stream_type}"
-            if self.params_str:
-                s += f"@{self.params_str}"
-            return s
-
-    def __key(self):
-        return self.symbol, self.stream_type, self.params_str, self.contract_type
-
-    def __hash__(self):
-        return hash(self.__key())
-
-    def __eq__(self, other):
-        if isinstance(other, StreamName):
-            return self.__key() == other.__key()
-        return NotImplemented
-
-
-class KeepAliveWebsocket:
-    def __init__(self, base_url, stream_name=None, client=None):
-        """
-        DO NOT USE THIS TO CREATE INSTANCE
-        """
-        self.client: Optional[AsyncClient] = client
-        self.conn: Optional[WebSocketConnection] = None
-        self.commands_send_chan, self.commands_recv_chan = trio.open_memory_channel(100)
-        self.subscribe_id = 0
-        self.msg_send_chan: Optional[trio.MemorySendChannel] = None
-        self.msg_recv_chan: Optional[trio.MemoryReceiveChannel] = None
-        self.requesting = trio.Event()
-        self.listen_key, self.url = None, None
+    def __init__(
+        self,
+        client: AsyncClient,
+        endpoint: str = "spot",
+        alternative_net: str = "",
+        private=False,
+    ):
+        self.ws: trio_websocket.WebSocketConnection | None = None
+        self.endpoint: str = endpoint
+        self.alternative_net: str = alternative_net if alternative_net else "main"
+        self.client: AsyncClient = client
+        self.listen_key: str = ""
+        self.user_data_stream = private
 
     @classmethod
-    async def create(cls, base_url, stream_name=None, client=None):
-        """
-        @param base_url: websocket base URL
-        @param stream_name: stream name
-        @param client: only used in user data stream
-        """
-        self = cls(base_url, stream_name, client)
-        if not stream_name:
+    async def create(
+        cls,
+        client: AsyncClient,
+        endpoint: str = "spot",
+        alternative_net: str = "",
+        private=False,
+    ):
+        self = cls(client, endpoint, alternative_net, private)
+        if self.endpoint == "spot":
+            self.listen_key = await self.client.stream_get_listen_key()
+        elif self.endpoint == "linear":
             self.listen_key = await self.client.futures_stream_get_listen_key()
-            stream_name = self.listen_key
-        self.url = posixpath.join(base_url, str(stream_name))
+        elif self.endpoint == "inverse":
+            self.listen_key = await self.client.futures_coin_stream_get_listen_key()
+        elif self.endpoint == "portfolio":
+            self.listen_key = await self.client.portfolio_margin_stream_get_listen_key()
         return self
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self):
-        if self.conn:
-            await self.conn.aclose()
-
-    async def _get_message(self, conn: WebSocketConnection):
-        msg = ujson.loads(await conn.get_message())
-        self.requesting.set()
-        self.msg_send_chan, self.msg_recv_chan = trio.open_memory_channel(0)
-        while True:
-            await self.msg_send_chan.send(msg)
-            msg = ujson.loads(await conn.get_message())
-
-    async def _heartbeat(self, conn: WebSocketConnection):
-        while True:
-            payload = struct.pack('!I', random.getrandbits(32))
-            await conn.pong(payload)
-            await trio.sleep(seconds=600)  # less than 900 is ok
-
-    async def wait_message(self):
-        await self.requesting.wait()
-
-    async def keep_put_listen_key(self):
-        while True:
-            await trio.sleep(59 * 60)  # in 60 minutes
-            await self.client.futures_stream_keepalive(self.listen_key)
-
-    async def start_websocket(self):
-        async with open_websocket_url(self.url) as conn:
-            async with trio.open_nursery() as nursery:
-                if self.listen_key:
-                    nursery.start_soon(self.keep_put_listen_key)
-
-                nursery.start_soon(self._heartbeat, conn)
-                nursery.start_soon(self._get_message, conn)
-
-                # TODO: reconnect
-
-
-class BinanceSocketManager:
-    # STREAM_URL = 'wss://stream.binance.com:9443/ws'
-    # STREAM_TESTNET_URL = 'wss://testnet.binance.vision/ws'
-    FSTREAM_URL = 'wss://fstream.binance.com:443/ws'
-    FSTREAM_TESTNET_URL = 'wss://stream.binancefuture.com/ws'
-
-    # DSTREAM_URL = 'wss://dstream.binance.com:443/ws'
-    # DSTREAM_TESTNET_URL = 'wss://dstream.binancefuture.com/ws'
-
-    def __init__(self, client=None):
-        self.client: Optional[AsyncClient] = client
-        self.ws: Dict[StreamName, KeepAliveWebsocket] = {}
-        self.ws_private: Optional[KeepAliveWebsocket] = None
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        if self.client:
-            await self.client.close_connection()
-        if self.ws:
-            for stream_name, ws in self.ws.items():
-                await ws.__aexit__()
 
     @asynccontextmanager
-    async def subscribe(self, **kwargs) -> trio.MemoryReceiveChannel:
-        stream_name = StreamName(**kwargs)
-        self.ws[stream_name] = await KeepAliveWebsocket.create(self.FSTREAM_URL, stream_name, self.client)
+    async def connect(self):
         try:
+            base_url = self.URLS[self.alternative_net][self.endpoint]
+            if self.user_data_stream:
+                url = f"{base_url}/ws/{self.listen_key}"
+            else:
+                url = f"{base_url}/stream"
+        except KeyError:
+            raise ValueError(f"endpoint {self.endpoint} with net {self.alternative_net} not supported")
+        async with open_websocket_url(url) as ws:
+            self.ws = ws
             async with trio.open_nursery() as nursery:
-                nursery.start_soon(self.ws[stream_name].start_websocket)
-                await self.ws[stream_name].wait_message()  # wait message to synchronize
-                yield self.ws[stream_name].msg_recv_chan  # return a handler to user
-                nursery.cancel_scope.cancel()  # control has returned from user
-        finally:
-            await self.ws[stream_name].__aexit__()
-
-    @asynccontextmanager
-    async def subscribe_private(self) -> trio.MemoryReceiveChannel:
-        self.ws_private = await KeepAliveWebsocket.create(self.FSTREAM_URL, client=self.client)
-        try:
-            async with trio.open_nursery() as nursery:
-                nursery.start_soon(self.ws_private.start_websocket)
-                await self.ws_private.wait_message()
-                yield self.ws_private.msg_recv_chan
+                nursery.start_soon(self.keepalive)
+                yield self.ws
                 nursery.cancel_scope.cancel()
-        finally:
-            await self.ws_private.__aexit__()
+
+    async def keepalive(self):
+        while True:
+            await trio.sleep(59 * 60)
+            with trio.fail_after(5):
+                if self.endpoint == "spot":
+                    await self.client.stream_keepalive()
+                elif self.endpoint == "linear":
+                    await self.client.futures_stream_keepalive()
+                elif self.endpoint == "inverse":
+                    await self.client.futures_coin_stream_keepalive()
+                elif self.endpoint == "portfolio":
+                    await self.client.portfolio_margin_stream_keepalive()
+
+    async def subscribe(self, params: list[str], sub_id: int | None = None):
+        if sub_id is None:
+            sub_id = randint(1, 2147483647)
+        await self.ws.send_message(orjson.dumps({"method": "SUBSCRIBE", "params": params, "id": sub_id}))
+
+    async def list_subscribe(self, sub_id: int | None = None):
+        await self.ws.send_message(orjson.dumps({"method": "LIST_SUBSCRIPTIONS", "id": sub_id}))
+
+    async def unsubscribe(self, params: list[str], sub_id: int | None = None):
+        await self.ws.send_message(orjson.dumps({"method": "UNSUBSCRIBE", "params": params, "id": sub_id}))
+
+    async def get_next_message(self):
+        while True:
+            raw_message = await self.ws.get_message()
+            message = orjson.loads(raw_message)
+            yield message
