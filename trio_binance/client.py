@@ -261,9 +261,6 @@ class BaseClient:
         return params
 
     def _get_request_kwargs(self, method, signed: bool, force_params: bool = False, **kwargs) -> Dict:
-        # set default requests timeout
-        kwargs["timeout"] = self.REQUEST_TIMEOUT
-
         # add our global requests params
         if self._requests_params:
             kwargs.update(self._requests_params)
@@ -352,7 +349,13 @@ class AsyncClient(BaseClient):
 
     async def _request(self, method, uri: str, signed: bool, force_params: bool = False, **kwargs):
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
-        self.response = await getattr(self.session, method)(uri, **kwargs)
+        if method.lower() == "get":
+            req = self.session.build_request(method, uri, params=kwargs.get("params", ""), timeout=self.REQUEST_TIMEOUT)
+        else:
+            req = self.session.build_request(
+                method, uri, data=dict(kwargs.get("data", {})), timeout=self.REQUEST_TIMEOUT
+            )
+        self.response = await self.session.send(req)
         return await self._handle_response(self.response)
 
     @staticmethod
