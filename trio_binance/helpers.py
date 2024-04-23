@@ -29,9 +29,7 @@ def date_to_milliseconds(date_str: str) -> int:
     return int((d - epoch).total_seconds() * 1000.0)
 
 
-def round_step_size(
-    quantity: Union[float, Decimal], step_size: Union[float, Decimal]
-) -> float:
+def round_step_size(quantity: Union[float, Decimal], step_size: Union[float, Decimal]) -> float:
     """Rounds a given quantity to a specific step size
 
     :param quantity: required

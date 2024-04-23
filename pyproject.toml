@@ -22,14 +22,11 @@ httpx = ">0.20.0"
 h2 = "^4.1.0"
 trio = ">=0.25.0"
 trio-websocket = "^0.11.1"
-ujson = "^5.1.0"
+orjson = "^3.6.0"
 pytz = "^2024.1"
 dateparser = "^1.1.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.2.4"
-ipython = "^7.26.0"
-pytest-trio = "^0.7.0"
 pytest = "^8.1.1"
 ipython = "^8.22.2"
 pytest-trio = "^0.8.0"
@@ -38,3 +35,12 @@ ruff = "^0.4.1"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.format]
+line-ending = "lf"
+indent-style = "space"
+quote-style = "double"

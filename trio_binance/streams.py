@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import trio
 import ujson
+import orjson
 from trio_websocket import open_websocket_url, WebSocketConnection
 
 from trio_binance import AsyncClient
