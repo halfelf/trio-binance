@@ -954,7 +954,7 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api("get", "exchangeInfo")
 
     async def futures_get_symbol_info(self, symbol) -> Optional[Dict]:
-        res = await self.get_exchange_info()
+        res = await self.futures_exchange_info()
 
         for item in res["symbols"]:
             if item["symbol"] == symbol.upper():
@@ -1144,7 +1144,7 @@ class AsyncClient(BaseClient):
         return await self._request_futures_coin_api("get", "exchangeInfo")
 
     async def futures_coin_get_symbol_info(self, symbol) -> Optional[Dict]:
-        res = await self.get_exchange_info()
+        res = await self.futures_coin_exchange_info()
 
         for item in res["symbols"]:
             if item["symbol"] == symbol.upper():
