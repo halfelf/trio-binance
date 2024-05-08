@@ -353,7 +353,7 @@ class AsyncClient(BaseClient):
             req = self.session.build_request(method, uri, params=kwargs.get("params", ""), timeout=self.REQUEST_TIMEOUT)
         else:
             req = self.session.build_request(
-                method, uri, data=dict(kwargs.get("data", {})), timeout=self.REQUEST_TIMEOUT
+                method, uri, json=dict(kwargs.get("data", {})), timeout=self.REQUEST_TIMEOUT
             )
         self.response = await self.session.send(req)
         return await self._handle_response(self.response)
