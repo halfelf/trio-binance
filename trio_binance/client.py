@@ -1,19 +1,23 @@
+import base64
 from typing import Dict, Optional, List, Tuple, Union
 
 import httpx
-import h2
-import trio
 import hashlib
 import hmac
 import time
 from operator import itemgetter
 from urllib.parse import urlencode
 
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
 from .helpers import convert_ts_str
 from .exceptions import (
     BinanceAPIException,
     BinanceRequestException,
-    NotImplementedException,
 )
 
 
@@ -133,6 +137,7 @@ class BaseClient:
         api_cluster_id: Union[int, str] = "",
         tld: str = "com",
         testnet: bool = False,
+        sign_style: str = "HMAC",
     ):
         """Binance API Client constructor
 
@@ -146,7 +151,7 @@ class BaseClient:
         :type api_cluster_id: str or int
         :param testnet: Use testnet environment - only available for vanilla options at the moment
         :type testnet: bool
-
+        :param sign_style: How to generate signature. Default HMAC. Choices: ["HMAC", "RSA", "Ed25519"]
         """
 
         self.tld = tld
@@ -161,11 +166,19 @@ class BaseClient:
         self.OPTIONS_TESTNET_URL = self.OPTIONS_TESTNET_URL.format(tld)
 
         self.API_KEY = api_key
-        self.API_SECRET = api_secret
         self._requests_params = requests_params
         self.response = None
         self.testnet = testnet
         self.timestamp_offset = 0
+        if sign_style != "HMAC" and sign_style != "RSA" and sign_style != "Ed25519":
+            raise ValueError("Invalid sign style. Must be HMAC or RSA")
+        self.sign_style = sign_style
+        self.API_SECRET: Union[Ed25519PrivateKey, RSAPrivateKey, str]
+        if self.sign_style != "HMAC":
+            with open(api_secret, "rb") as f:
+                self.API_SECRET = load_pem_private_key(f.read(), password=None)
+        else:
+            self.API_SECRET = api_secret
 
     def _get_headers(self) -> Dict:
         headers = {
@@ -231,12 +244,20 @@ class BaseClient:
     def _generate_signature(self, data: Dict) -> str:
         ordered_data = self._order_params(data)
         query_string = "&".join([f"{d[0]}={d[1]}" for d in ordered_data])
-        m = hmac.new(
-            self.API_SECRET.encode("utf-8"),
-            query_string.encode("utf-8"),
-            hashlib.sha256,
-        )
-        return m.hexdigest()
+        encoded = query_string.encode("ASCII")
+        if self.sign_style == "HMAC":
+            m = hmac.new(
+                self.API_SECRET.encode("utf-8"),
+                encoded,
+                hashlib.sha256,
+            )
+            return m.hexdigest()
+        elif self.sign_style == "RSA":
+            signature = self.API_SECRET.sign(encoded, padding.PKCS1v15(), hashes.SHA256())
+            return base64.b64encode(signature).decode()
+        else:  # Ed25519
+            signature = self.API_SECRET.sign(encoded)
+            return base64.b64encode(signature).decode()
 
     @staticmethod
     def _order_params(data: Dict) -> List[Tuple[str, str]]:
@@ -306,8 +327,9 @@ class AsyncClient(BaseClient):
         api_cluster_id: Union[str, int] = "",
         tld: str = "com",
         testnet: bool = False,
+        sign_style: str = "HMAC",
     ):
-        super().__init__(api_key, api_secret, requests_params, api_cluster_id, tld, testnet)
+        super().__init__(api_key, api_secret, requests_params, api_cluster_id, tld, testnet, sign_style)
         self.session: httpx.AsyncClient = httpx.AsyncClient(http2=True, headers=self._get_headers())
 
     @classmethod
@@ -319,8 +341,9 @@ class AsyncClient(BaseClient):
         api_cluster_id: Union[str, int] = "",
         tld: str = "com",
         testnet: bool = False,
+        sign_style: str = "HMAC",
     ):
-        self = cls(api_key, api_secret, requests_params, api_cluster_id, tld, testnet)
+        self = cls(api_key, api_secret, requests_params, api_cluster_id, tld, testnet, sign_style)
 
         try:
             await self.ping()
