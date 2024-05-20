@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "trio-binance"
-version = "0.4.0"
+version = "0.4.1"
 description = "trio based asynchronous binance SDK"
 authors = ["Shu Wang <halfelf.ronin@gmail.com>"]
 keywords = ["binance", "python-trio"]

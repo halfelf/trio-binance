@@ -167,7 +167,6 @@ class BaseClient:
 
         self.API_KEY = api_key
         self._requests_params = requests_params
-        self.response = None
         self.testnet = testnet
         self.timestamp_offset = 0
         if sign_style != "HMAC" and sign_style != "RSA" and sign_style != "Ed25519":
@@ -378,8 +377,8 @@ class AsyncClient(BaseClient):
             req = self.session.build_request(
                 method, uri, json=dict(kwargs.get("data", {})), timeout=self.REQUEST_TIMEOUT
             )
-        self.response = await self.session.send(req)
-        return await self._handle_response(self.response)
+        response = await self.session.send(req)
+        return await self._handle_response(response)
 
     @staticmethod
     async def _handle_response(response: httpx.Response):
