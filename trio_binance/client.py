@@ -658,6 +658,9 @@ class AsyncClient(BaseClient):
     async def get_dust_log(self, **params):
         return await self._request_margin_api("get", "asset/dribblet", True, data=params)
 
+    async def get_dustable_list(self, **params):
+        return await self._request_margin_api("post", "asset/dust-btc", True, data=params)
+
     async def transfer_dust(self, **params):
         return await self._request_margin_api("post", "asset/dust", True, data=params)
 
