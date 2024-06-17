@@ -138,6 +138,7 @@ class BaseClient:
         tld: str = "com",
         testnet: bool = False,
         sign_style: str = "HMAC",
+        api_secret_passphrase: Optional[bytes] = None,
     ):
         """Binance API Client constructor
 
@@ -175,7 +176,7 @@ class BaseClient:
         self.API_SECRET: Union[Ed25519PrivateKey, RSAPrivateKey, str]
         if self.sign_style != "HMAC":
             with open(api_secret, "rb") as f:
-                self.API_SECRET = load_pem_private_key(f.read(), password=None)
+                self.API_SECRET = load_pem_private_key(f.read(), password=api_secret_passphrase)
         else:
             self.API_SECRET = api_secret
 
@@ -327,8 +328,9 @@ class AsyncClient(BaseClient):
         tld: str = "com",
         testnet: bool = False,
         sign_style: str = "HMAC",
+        api_secret_passphrase: Optional[bytes] = None,
     ):
-        super().__init__(api_key, api_secret, requests_params, api_cluster_id, tld, testnet, sign_style)
+        super().__init__(api_key, api_secret, requests_params, api_cluster_id, tld, testnet, sign_style, api_secret_passphrase)
         self.session: httpx.AsyncClient = httpx.AsyncClient(http2=True, headers=self._get_headers())
 
     @classmethod
@@ -341,8 +343,9 @@ class AsyncClient(BaseClient):
         tld: str = "com",
         testnet: bool = False,
         sign_style: str = "HMAC",
+        api_secret_passphrase: Optional[bytes] = None,
     ):
-        self = cls(api_key, api_secret, requests_params, api_cluster_id, tld, testnet, sign_style)
+        self = cls(api_key, api_secret, requests_params, api_cluster_id, tld, testnet, sign_style, api_secret_passphrase)
 
         try:
             await self.ping()
