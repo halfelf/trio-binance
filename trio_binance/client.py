@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import time
 from operator import itemgetter
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -246,6 +246,7 @@ class BaseClient:
         query_string = "&".join([f"{d[0]}={d[1]}" for d in ordered_data])
         encoded = query_string.encode("ASCII")
         if self.sign_style == "HMAC":
+            assert isinstance(self.API_SECRET, str)
             m = hmac.new(
                 self.API_SECRET.encode("utf-8"),
                 encoded,
@@ -253,11 +254,15 @@ class BaseClient:
             )
             return m.hexdigest()
         elif self.sign_style == "RSA":
+            assert isinstance(self.API_SECRET, RSAPrivateKey)
             signature = self.API_SECRET.sign(encoded, padding.PKCS1v15(), hashes.SHA256())
-            return base64.b64encode(signature).decode()
+            b64 = base64.b64encode(signature).decode()
+            return quote(b64.replace("\n", ""), safe='')
         else:  # Ed25519
+            assert isinstance(self.API_SECRET, Ed25519PrivateKey)
             signature = self.API_SECRET.sign(encoded)
-            return base64.b64encode(signature).decode()
+            b64 = base64.b64encode(signature).decode()
+            return quote(b64.replace("\n", ""), safe='')
 
     @staticmethod
     def _order_params(data: Dict) -> List[Tuple[str, str]]:
