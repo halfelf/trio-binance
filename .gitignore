@@ -385,3 +385,5 @@ tags
 
 .idea
 poetry.lock
+uv.lock
+.python-version

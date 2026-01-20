@@ -1,41 +1,39 @@
-[tool.poetry]
+[project]
 name = "trio-binance"
-version = "0.4.4"
+version = "0.4.5"
 description = "trio based asynchronous binance SDK"
-authors = ["Shu Wang <halfelf.ronin@gmail.com>"]
-keywords = ["binance", "python-trio"]
+authors = [
+    {name="Shu Wang", email="halfelf.ronin@gmail.com"}
+]
 readme = "README.rst"
+requires-python = ">=3.11"
 license = "MIT"
-homepage = "https://github.com/halfelf/trio-binance"
-repository = "https://github.com/halfelf/trio-binance"
-include = ["LICENSE"]
 classifiers = [
   "Framework :: Trio",
   "Intended Audience :: Developers",
   "Intended Audience :: Financial and Insurance Industry",
-  "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "h2>=4.1.0",
+    "httpx>=0.20.0",
+    "trio>=0.25.0",
+    "trio-websocket>=0.11.1",
+    "orjson>=3.6.0",
+    "pytz>=2024.1",
+    "dateparser>=1.1.0",
+    "cryptography>=42.0.7"
 ]
 
-[tool.poetry.dependencies]
-python = "^3.11"
-httpx = ">0.20.0"
-h2 = "^4.1.0"
-trio = ">=0.25.0"
-trio-websocket = "^0.11.1"
-orjson = "^3.6.0"
-pytz = "^2024.1"
-dateparser = "^1.1.0"
-cryptography = "^42.0.7"
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1",
+    "ipython>=8.22.2",
+    "pytest-trio>=0.8.0",
+    "ruff>=0.4.1"
+]
 
-[tool.poetry.dev-dependencies]
-pytest = "^8.1.1"
-ipython = "^8.22.2"
-pytest-trio = "^0.8.0"
-ruff = "^0.4.1"
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[project.urls]
+Repository = "https://github.com/halfelf/trio-binance"
 
 [tool.ruff]
 line-length = 120
