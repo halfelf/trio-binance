@@ -1,6 +1,6 @@
 [project]
 name = "trio-binance"
-version = "0.4.5"
+version = "0.4.6"
 description = "trio based asynchronous binance SDK"
 authors = [
     {name="Shu Wang", email="halfelf.ronin@gmail.com"}
