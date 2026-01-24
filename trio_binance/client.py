@@ -999,6 +999,9 @@ class AsyncClient(BaseClient):
     async def futures_order_book(self, **params):
         return await self._request_futures_api("get", "depth", data=params)
 
+    async def future_rpi_orderbook(self, **params):
+        return await self._request_futures_api("get", "rpiDepth", data=params)
+
     async def futures_recent_trades(self, **params):
         return await self._request_futures_api("get", "trades", data=params)
 
@@ -1019,6 +1022,9 @@ class AsyncClient(BaseClient):
 
     async def futures_funding_rate(self, **params):
         return await self._request_futures_api("get", "fundingRate", data=params)
+
+    async def futures_funding_info(self, **params):
+        return await self._request_futures_api("get", "fundingInfo", data=params)
 
     async def futures_ticker(self, **params):
         return await self._request_futures_api("get", "ticker/24hr", data=params)
@@ -1215,6 +1221,9 @@ class AsyncClient(BaseClient):
 
     async def futures_coin_funding_rate(self, **params):
         return await self._request_futures_coin_api("get", "fundingRate", data=params)
+
+    async def futures_coin_funding_info(self, **params):
+        return await self._request_futures_coin_api("get", "fundingInfo", data=params)
 
     async def futures_coin_ticker(self, **params):
         return await self._request_futures_coin_api("get", "ticker/24hr", data=params)
