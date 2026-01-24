@@ -42,6 +42,7 @@ class BaseClient:
     MARGIN_API_VERSION = "v1"
     FUTURES_API_VERSION = "v1"
     FUTURES_API_VERSION2 = "v2"
+    FUTURES_API_VERSION3 = "v3"
     OPTIONS_API_VERSION = "v1"
     PORTFOLIO_MARGIN_VERSION = "v1"
 
@@ -208,7 +209,7 @@ class BaseClient:
         url = self.FUTURES_URL
         if self.testnet:
             url = self.FUTURES_TESTNET_URL
-        options = {1: self.FUTURES_API_VERSION, 2: self.FUTURES_API_VERSION2}
+        options = {1: self.FUTURES_API_VERSION, 2: self.FUTURES_API_VERSION2, 3: self.FUTURES_API_VERSION3}
         return url + "/" + options[version] + "/" + path
 
     def _create_futures_data_api_uri(self, path: str) -> str:
@@ -1023,7 +1024,7 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api("get", "ticker/24hr", data=params)
 
     async def futures_symbol_ticker(self, **params):
-        return await self._request_futures_api("get", "ticker/price", data=params)
+        return await self._request_futures_api("get", "ticker/price", version=2, data=params)
 
     async def futures_orderbook_ticker(self, **params):
         return await self._request_futures_api("get", "ticker/bookTicker", data=params)
@@ -1116,10 +1117,10 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api("delete", "batchOrders", True, data=params)
 
     async def futures_account_balance(self, **params):
-        return await self._request_futures_api("get", "balance", True, data=params)
+        return await self._request_futures_api("get", "balance", True, version=3, data=params)
 
     async def futures_account(self, **params):
-        return await self._request_futures_api("get", "account", True, data=params, version=2)
+        return await self._request_futures_api("get", "account", True, version=3, data=params)
 
     async def futures_change_leverage(self, **params):
         return await self._request_futures_api("post", "leverage", True, data=params)
@@ -1134,7 +1135,7 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api("get", "positionMargin/history", True, data=params)
 
     async def futures_position_information(self, **params):
-        return await self._request_futures_api("get", "positionRisk", True, data=params)
+        return await self._request_futures_api("get", "positionRisk", True, version=3, data=params)
 
     async def futures_account_trades(self, **params):
         return await self._request_futures_api("get", "userTrades", True, data=params)
