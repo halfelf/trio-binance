@@ -18,7 +18,7 @@ def date_to_milliseconds(date_str: str) -> int:
     :param date_str: date in readable format, i.e. "January 01, 2018", "11 hours ago UTC", "now UTC"
     """
     # get epoch value in UTC
-    epoch: datetime = datetime.utcfromtimestamp(0).replace(tzinfo=pytz.utc)
+    epoch: datetime = datetime.fromtimestamp(0, tz=pytz.utc)
     # parse our date string
     d: Optional[datetime] = dateparser.parse(date_str, settings={"TIMEZONE": "UTC"})
     # if the date is not timezone aware apply UTC timezone
