@@ -4,7 +4,7 @@ Welcome to trio-binance
 
 This is an unofficial Python wrapper for the `Binance exchange REST API v3 <https://binance-docs.github.io/apidocs/spot/en>`_. I am in no way affiliated with Binance, use at your own risk.
 
-And this repository is forked from `python-binance <https://github.com/sammchardy/python-binance>`_, but has only async client, and works **only** with `trio <https://trio.readthedocs.io/en/stable/index.html>`_ or `trio-compatible <https://trio.readthedocs.io/en/stable/awesome-trio-libraries.html#trio-asyncio-interoperability>`_ asynchronous frameworks.
+And this repository is forked from `python-binance <https://github.com/sammchardy/python-binance>`_, but has only async client, and works **only** with `trio <https://trio.readthedocs.io/en/stable/index.html>`_ or `trio-compatible <https://trio.readthedocs.io/en/stable/awesome-trio-libraries.html#trio-asyncio-interoperability>`_ asynchronous frameworks. I have kept the REST API as close to the original as possible, but using a completely different approach for websocket streams, due to the design of trio and structured concurrency.
 
 Source code
   https://github.com/halfelf/trio-binance
@@ -19,6 +19,8 @@ Quick Start
 .. code:: bash
 
     pip install trio-binance
+    # or, I suggest using uv to manage your Python dependencies.
+    uv add trio-binance
 
 
 Example

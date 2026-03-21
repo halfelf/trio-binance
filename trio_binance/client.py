@@ -172,7 +172,7 @@ class BaseClient:
         self.testnet = testnet
         self.timestamp_offset = 0
         if sign_style != "HMAC" and sign_style != "RSA" and sign_style != "Ed25519":
-            raise ValueError("Invalid sign style. Must be HMAC or RSA")
+            raise ValueError("Invalid sign style. Must be 'HMAC' or 'RSA' or 'Ed25519'")
         self.sign_style = sign_style
         self.API_SECRET: Union[Ed25519PrivateKey, RSAPrivateKey, str]
         if self.sign_style != "HMAC":
@@ -242,7 +242,7 @@ class BaseClient:
         options = {1: self.PORTFOLIO_MARGIN_VERSION}
         return url + "/" + options[version] + "/" + path
 
-    def _generate_signature(self, data: Dict) -> str:
+    def generate_signature(self, data: Dict) -> str:
         ordered_data = self._order_params(data)
         query_string = "&".join([f"{d[0]}={d[1]}" for d in ordered_data])
         encoded = query_string.encode("ASCII")
@@ -305,7 +305,7 @@ class BaseClient:
         if signed:
             # generate signature
             kwargs["data"]["timestamp"] = int(time.time() * 1000 + self.timestamp_offset)
-            kwargs["data"]["signature"] = self._generate_signature(kwargs["data"])
+            kwargs["data"]["signature"] = self.generate_signature(kwargs["data"])
 
             # sort get and post params to match signature order
         if data:
@@ -720,11 +720,11 @@ class AsyncClient(BaseClient):
     # User Stream Endpoints
 
     async def stream_get_listen_key(self):
-        res = await self._post("userDataStream", False, data={})
+        res = await self._post("userDataStream", True, data={})
         return res["listenKey"]
 
     async def stream_keepalive(self):
-        return await self._put("userDataStream", False, data={})
+        return await self._put("userDataStream", True, data={})
 
     async def stream_close(self):
         return await self._delete("userDataStream", False, data={})
@@ -839,33 +839,6 @@ class AsyncClient(BaseClient):
 
     async def get_open_margin_oco_orders(self, **params):
         return await self._request_margin_api("get", "margin/allOrderList", signed=True, data=params)
-
-    # Cross-margin
-
-    async def margin_stream_get_listen_key(self):
-        res = await self._request_margin_api("post", "userDataStream", signed=False, data={})
-        return res["listenKey"]
-
-    async def margin_stream_keepalive(self):
-        return await self._request_margin_api("put", "userDataStream", signed=False, data={})
-
-    async def margin_stream_close(self):
-        return await self._request_margin_api("delete", "userDataStream", signed=False, data={})
-
-        # Isolated margin
-
-    async def isolated_margin_stream_get_listen_key(self, symbol):
-        params = {"symbol": symbol}
-        res = await self._request_margin_api("post", "userDataStream/isolated", signed=False, data=params)
-        return res["listenKey"]
-
-    async def isolated_margin_stream_keepalive(self, symbol, listenKey):
-        params = {"symbol": symbol, "listenKey": listenKey}
-        return await self._request_margin_api("put", "userDataStream/isolated", signed=False, data=params)
-
-    async def isolated_margin_stream_close(self, symbol, listenKey):
-        params = {"symbol": symbol, "listenKey": listenKey}
-        return await self._request_margin_api("delete", "userDataStream/isolated", signed=False, data=params)
 
     # Lending Endpoints
 
@@ -1163,11 +1136,11 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api("get", "multiAssetsMargin", True, data={})
 
     async def futures_stream_get_listen_key(self):
-        res = await self._request_futures_api("post", "listenKey", signed=False, data={})
+        res = await self._request_futures_api("post", "listenKey", signed=True, data={})
         return res["listenKey"]
 
     async def futures_stream_keepalive(self):
-        return await self._request_futures_api("put", "listenKey", signed=False, data={})
+        return await self._request_futures_api("put", "listenKey", signed=True, data={})
 
     async def futures_stream_close(self):
         return await self._request_futures_api("delete", "listenKey", signed=False, data={})
@@ -1314,11 +1287,11 @@ class AsyncClient(BaseClient):
         return await self._request_futures_coin_api("get", "positionSide/dual", True, data=params)
 
     async def futures_coin_stream_get_listen_key(self):
-        res = await self._request_futures_coin_api("post", "listenKey", signed=False, data={})
+        res = await self._request_futures_coin_api("post", "listenKey", signed=True, data={})
         return res["listenKey"]
 
     async def futures_coin_stream_keepalive(self):
-        return await self._request_futures_coin_api("put", "listenKey", signed=False, data={})
+        return await self._request_futures_coin_api("put", "listenKey", signed=True, data={})
 
     async def futures_coin_stream_close(self):
         return await self._request_futures_coin_api("delete", "listenKey", signed=False, data={})
@@ -1676,14 +1649,14 @@ class AsyncClient(BaseClient):
         return await self._request_portfolio_margin_api("get", "cm/adlQuantile", signed=True, data=params)
 
     async def portfolio_margin_stream_get_listen_key(self) -> str:
-        res = await self._request_portfolio_margin_api("post", "listenKey", signed=False, data={})
+        res = await self._request_portfolio_margin_api("post", "listenKey", signed=True, data={})
         return res["listenKey"]
 
     async def portfolio_margin_stream_keepalive(self) -> dict:
         """
         @return: empty dict {}
         """
-        return await self._request_portfolio_margin_api("put", "listenKey", signed=False, data={})
+        return await self._request_portfolio_margin_api("put", "listenKey", signed=True, data={})
 
     async def portfolio_margin_stream_close(self) -> dict:
         """
