@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from random import randint
 
 import trio
@@ -7,6 +8,15 @@ import orjson
 from trio_websocket import open_websocket_url
 
 from trio_binance import AsyncClient
+
+logger = logging.getLogger(__name__)
+
+# Seconds between WebSocket pings.
+_HEARTBEAT_INTERVAL = 20
+# Seconds to wait for a pong before treating the connection as dead.
+_HEARTBEAT_TIMEOUT = 10
+# Exponential-backoff cap (seconds) between reconnect attempts.
+_MAX_RECONNECT_DELAY = 60
 
 
 class BinanceSocketManager:
@@ -55,8 +65,17 @@ class BinanceSocketManager:
         self._connections: dict[str, trio_websocket.WebSocketConnection] = {}
 
         # trio.Event per key, set once the connection is open and ready.
-        # Used by _open_connection() to avoid opening duplicates.
+        # Reset to a new (unset) Event each time a connection drops so that
+        # callers waiting in subscribe() pause until the reconnect completes.
         self._connection_ready: dict[str, trio.Event] = {}
+
+        # All streams currently subscribed per connection key.  Used to
+        # rebuild the ?streams= URL when reconnecting.
+        self._subscribed_streams: dict[str, list[str]] = {}
+
+        # Base stream URL (no query string) per key, stored on first connect
+        # so that reconnect can reassemble the full URL.
+        self._stream_base_urls: dict[str, str] = {}
 
         # Nursery and message channel are created in connect() and live for the
         # duration of that context manager.
@@ -119,21 +138,77 @@ class BinanceSocketManager:
                 return f"{endpoint_cfg}/ws/{self.listen_key}"
             return f"{endpoint_cfg}/stream"
 
-    async def _connection_task(self, url: str, key: str):
+    def _build_reconnect_url(self, key: str) -> str:
+        """Build the URL to use when reconnecting an existing connection.
+
+        For private connections the listenKey URL is rebuilt from scratch so
+        that any key refresh performed by _keepalive_task is picked up.
+
+        For market-data connections all currently subscribed streams are
+        embedded in the ?streams= query parameter so that the server starts
+        pushing them immediately without a separate SUBSCRIBE handshake.
+        """
+        if key == "private":
+            return self._build_url("private")
+        streams = self._subscribed_streams.get(key, [])
+        base = self._stream_base_urls[key]
+        if streams:
+            return f"{base}?streams={'/'.join(streams)}"
+        return base
+
+    async def _heartbeat_task(self, ws: trio_websocket.WebSocketConnection, key: str):
+        """Send a WebSocket ping every _HEARTBEAT_INTERVAL seconds.
+
+        If the server does not respond within _HEARTBEAT_TIMEOUT seconds the
+        fail_after block raises TooSlowError, which propagates out of the inner
+        nursery in _connection_task and triggers a reconnect.
+        """
+        while True:
+            await trio.sleep(_HEARTBEAT_INTERVAL)
+            with trio.fail_after(_HEARTBEAT_TIMEOUT):
+                await ws.ping()
+
+    async def _connection_task(self, initial_url: str, key: str):
         """Long-running task that owns one WebSocket connection.
 
         Opens the connection, signals _connection_ready[key], then forwards
-        every incoming message to the shared memory channel until the socket
-        closes (raising ConnectionClosed) or the nursery is canceled.
-        """
-        async with open_websocket_url(url) as ws:
-            self._connections[key] = ws
-            self._connection_ready[key].set()
-            while True:
-                raw = await ws.get_message()
-                await self._message_send.send(orjson.loads(raw))
+        every incoming message to the shared memory channel.
 
-    async def _open_connection(self, key: str, url: str):
+        On any connection error (including a heartbeat timeout) the task waits
+        with exponential back-off and reconnects automatically.  The outer
+        nursery's cancel scope is the only way to stop the loop.
+        """
+        attempt = 0
+        while True:
+            url = initial_url if attempt == 0 else self._build_reconnect_url(key)
+            try:
+                async with open_websocket_url(url) as ws:
+                    self._connections[key] = ws
+                    self._connection_ready[key].set()
+                    attempt = 0  # reset counter after a successful connect
+
+                    async with trio.open_nursery() as inner:
+                        inner.start_soon(self._heartbeat_task, ws, key)
+                        while True:
+                            raw = await ws.get_message()
+                            await self._message_send.send(orjson.loads(raw))
+
+            except trio.Cancelled:
+                # Outer nursery is shutting down — propagate immediately.
+                raise
+            except Exception as exc:
+                delay = min(2 ** attempt, _MAX_RECONNECT_DELAY)
+                logger.warning(
+                    "WebSocket[%s] disconnected (%s: %s), reconnecting in %.0fs",
+                    key, type(exc).__name__, exc, delay,
+                )
+                # Replace the ready event so that any concurrent subscribe()
+                # calls will block until the new connection is established.
+                self._connection_ready[key] = trio.Event()
+                await trio.sleep(delay)
+                attempt += 1
+
+    async def _open_connection(self, key: str, url: str, base_url: str):
         """Lazily start a _connection_task for *key* and wait until it is ready.
 
         Idempotent: a second call with the same key returns immediately once the
@@ -141,6 +216,7 @@ class BinanceSocketManager:
         """
         if key not in self._connection_ready:
             self._connection_ready[key] = trio.Event()
+            self._stream_base_urls[key] = base_url
             self._nursery.start_soon(self._connection_task, url, key)
         await self._connection_ready[key].wait()
 
@@ -164,13 +240,16 @@ class BinanceSocketManager:
         self._message_recv = recv_ch
         self._connections = {}
         self._connection_ready = {}
+        self._subscribed_streams = {}
+        self._stream_base_urls = {}
 
         async with trio.open_nursery() as nursery:
             self._nursery = nursery
             if self.listen_key:
                 # User-data streams push messages without a SUBSCRIBE handshake,
                 # so open the private connection immediately.
-                await self._open_connection("private", self._build_url("private"))
+                url = self._build_url("private")
+                await self._open_connection("private", url, url)
                 nursery.start_soon(self._keepalive_task)
             yield self
             nursery.cancel_scope.cancel()
@@ -205,6 +284,9 @@ class BinanceSocketManager:
         For spot / inverse / portfolio a single '_default' connection is used,
         and streams are always added via JSON SUBSCRIBE (the legacy /stream URL
         accepts bare connections).
+
+        All subscribed stream names are recorded in _subscribed_streams so that
+        they can be re-sent automatically after a reconnect.
         """
         if sub_id is None:
             sub_id = randint(1, 2147483647)
@@ -219,14 +301,19 @@ class BinanceSocketManager:
                 groups.setdefault(stype, []).append(stream)
 
             for stype, streams in groups.items():
+                # Record streams for reconnect before opening the connection.
+                self._subscribed_streams.setdefault(stype, []).extend(streams)
+
                 if stype not in self._connection_ready:
                     # First subscription for this type: include streams in the
                     # URL so the server accepts the connection immediately.
-                    url = f"{endpoint_cfg[stype]}/stream?streams={'/'.join(streams)}"
-                    await self._open_connection(stype, url)
+                    base_url = f"{endpoint_cfg[stype]}/stream"
+                    url = f"{base_url}?streams={'/'.join(streams)}"
+                    await self._open_connection(stype, url, base_url)
                     # No JSON SUBSCRIBE needed — streams are already active via URL.
                 else:
-                    # Connection already open: add extra streams via JSON SUBSCRIBE.
+                    # Connection already open (or reconnecting): wait for it,
+                    # then add extra streams via JSON SUBSCRIBE.
                     await self._connection_ready[stype].wait()
                     await self._connections[stype].send_message(
                         orjson.dumps({"method": "SUBSCRIBE", "params": streams, "id": sub_id})
@@ -235,10 +322,12 @@ class BinanceSocketManager:
             # spot / inverse / portfolio: single '_default' connection.
             # Like the new linear endpoints, the legacy /stream URL also requires
             # at least one stream to be present at connect time.
+            self._subscribed_streams.setdefault("_default", []).extend(params)
+
             if "_default" not in self._connection_ready:
-                base = self._build_url("_default")
-                url = f"{base}?streams={'/'.join(params)}"
-                await self._open_connection("_default", url)
+                base_url = self._build_url("_default")
+                url = f"{base_url}?streams={'/'.join(params)}"
+                await self._open_connection("_default", url, base_url)
             else:
                 await self._connection_ready["_default"].wait()
                 await self._connections["_default"].send_message(
@@ -264,11 +353,24 @@ class BinanceSocketManager:
                 groups.setdefault(stype, []).append(stream)
 
             for stype, streams in groups.items():
+                # Remove from reconnect tracking.
+                if stype in self._subscribed_streams:
+                    for s in streams:
+                        try:
+                            self._subscribed_streams[stype].remove(s)
+                        except ValueError:
+                            pass
                 if stype in self._connections:
                     await self._connections[stype].send_message(
                         orjson.dumps({"method": "UNSUBSCRIBE", "params": streams, "id": sub_id})
                     )
         else:
+            if "_default" in self._subscribed_streams:
+                for s in params:
+                    try:
+                        self._subscribed_streams["_default"].remove(s)
+                    except ValueError:
+                        pass
             if "_default" in self._connections:
                 await self._connections["_default"].send_message(
                     orjson.dumps({"method": "UNSUBSCRIBE", "params": params, "id": sub_id})
