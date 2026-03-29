@@ -17,6 +17,9 @@ _HEARTBEAT_INTERVAL = 20
 _HEARTBEAT_TIMEOUT = 10
 # Exponential-backoff cap (seconds) between reconnect attempts.
 _MAX_RECONNECT_DELAY = 60
+# listenKey keepalive: max retry attempts and pause between them.
+_KEEPALIVE_MAX_RETRIES = 5
+_KEEPALIVE_RETRY_DELAY = 10  # seconds
 
 
 class BinanceSocketManager:
@@ -255,18 +258,44 @@ class BinanceSocketManager:
             nursery.cancel_scope.cancel()
 
     async def _keepalive_task(self):
-        """Extend the listenKey every 59 minutes to prevent server-side expiry."""
+        """Extend the listenKey every 59 minutes to prevent server-side expiry.
+
+        Each renewal attempt is retried up to _KEEPALIVE_MAX_RETRIES times
+        (with a _KEEPALIVE_RETRY_DELAY second pause between attempts) before
+        giving up on that cycle.  Failure is logged but never crashes the task:
+        losing the WebSocket connection due to a stale listenKey is far less
+        harmful than tearing down the whole nursery.
+        """
         while True:
             await trio.sleep(59 * 60)
-            with trio.fail_after(5):
-                if self.endpoint == "spot":
-                    await self.client.stream_keepalive()
-                elif self.endpoint == "linear":
-                    await self.client.futures_stream_keepalive()
-                elif self.endpoint == "inverse":
-                    await self.client.futures_coin_stream_keepalive()
-                elif self.endpoint == "portfolio":
-                    await self.client.portfolio_margin_stream_keepalive()
+            for attempt in range(1, _KEEPALIVE_MAX_RETRIES + 1):
+                try:
+                    with trio.fail_after(5):
+                        if self.endpoint == "spot":
+                            await self.client.stream_keepalive()
+                        elif self.endpoint == "linear":
+                            await self.client.futures_stream_keepalive()
+                        elif self.endpoint == "inverse":
+                            await self.client.futures_coin_stream_keepalive()
+                        elif self.endpoint == "portfolio":
+                            await self.client.portfolio_margin_stream_keepalive()
+                    break  # success — no more retries needed
+                except trio.Cancelled:
+                    raise
+                except Exception as exc:
+                    if attempt == _KEEPALIVE_MAX_RETRIES:
+                        logger.critical(
+                            "listenKey keepalive FAILED after %d attempts (%s: %s); "
+                            "stream may expire within 1 minute",
+                            attempt, type(exc).__name__, exc,
+                        )
+                    else:
+                        logger.warning(
+                            "listenKey keepalive attempt %d/%d failed (%s: %s), retrying in %d s",
+                            attempt, _KEEPALIVE_MAX_RETRIES,
+                            type(exc).__name__, exc, _KEEPALIVE_RETRY_DELAY,
+                        )
+                        await trio.sleep(_KEEPALIVE_RETRY_DELAY)
 
     async def subscribe(self, params: list[str], sub_id: int | None = None):
         """Subscribe to one or more streams.
