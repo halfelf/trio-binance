@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import logging
 from random import randint
+import time
 
 import trio
 import trio_websocket
@@ -20,10 +21,12 @@ _MAX_RECONNECT_DELAY = 60
 # listenKey keepalive: max retry attempts and pause between them.
 _KEEPALIVE_MAX_RETRIES = 5
 _KEEPALIVE_RETRY_DELAY = 10  # seconds
+# Timeout for WebSocket API subscription response.
+_SUBSCRIBE_TIMEOUT = 10  # seconds
 
 
 class BinanceSocketManager:
-    # Binance WebSocket base URLs.
+    # Binance WebSocket stream base URLs.
     #
     # Linear (USD-M futures) uses the new tripartite structure introduced in the
     # 2025 WebSocket migration notice:
@@ -31,8 +34,11 @@ class BinanceSocketManager:
     #   /market  — regular market data (aggTrade, markPrice, kline, ticker …)
     #   /private — user account / order-update streams (requires listenKey)
     #
-    # Spot, inverse (COIN-M), and portfolio-margin still use the legacy single
+    # Inverse (COIN-M) and portfolio-margin still use the legacy single
     # base URL; the /ws/<listenKey> vs /stream path split is handled at runtime.
+    #
+    # Spot user data streams are now delivered via the WebSocket API
+    # (see WSAPI_URLS below); the spot stream URL is only used for market data.
     URLS = {
         "main": {
             "spot": "wss://stream.binance.com:9443",
@@ -45,6 +51,15 @@ class BinanceSocketManager:
             "portfolio": "wss://fstream.binance.com/pm",
         },
         "test": {},
+    }
+
+    # Binance WebSocket API URLs — used for SPOT user data stream subscriptions.
+    # The listenKey HTTP endpoints for SPOT were retired on 2026-02-20; user data
+    # streams are now established directly over the WebSocket API via
+    # userDataStream.subscribe.signature.
+    WSAPI_URLS = {
+        "main": "wss://ws-api.binance.com:443/ws-api/v3",
+        "test": "wss://ws-api.testnet.binance.vision/ws-api/v3",
     }
 
     # Stream-name suffixes (the part after the first '@', digits stripped) that
@@ -61,6 +76,11 @@ class BinanceSocketManager:
         self.endpoint: str = endpoint
         self.alternative_net: str = alternative_net if alternative_net else "main"
         self.client: AsyncClient = client
+        # For SPOT user data streams set user_data=True; the subscription is
+        # established via the WebSocket API (no listenKey required).
+        self.user_data: bool = False
+        # For futures / inverse / portfolio user data streams, set listen_key
+        # to the value returned by the corresponding HTTP endpoint.
         self.listen_key: str = ""
 
         # One WebSocket connection per stream-type key ("public", "market",
@@ -121,14 +141,22 @@ class BinanceSocketManager:
     def _build_url(self, stream_type: str) -> str:
         """Build the WebSocket URL for the given stream_type key.
 
-        Linear private streams use the new query-parameter format:
+        SPOT private streams use the WebSocket API:
+          wss://ws-api.binance.com:443/ws-api/v3
+        Subscription is established via userDataStream.subscribe.signature
+        after connecting (no listenKey in the URL).
+
+        Linear private streams use the query-parameter format:
           wss://fstream.binance.com/private/ws?listenKey=<key>
 
         All other linear streams use the combined /stream path:
           wss://fstream.binance.com/{public|market}/stream
 
-        Non-linear endpoints use the legacy /ws/<listenKey> or /stream paths.
+        Inverse / portfolio endpoints use the legacy /ws/<listenKey> or /stream paths.
         """
+        if self.endpoint == "spot" and stream_type == "private":
+            return self.WSAPI_URLS[self.alternative_net]
+
         endpoint_cfg = self.URLS[self.alternative_net][self.endpoint]
         if isinstance(endpoint_cfg, dict):
             # linear endpoint — new tripartite URL structure
@@ -136,7 +164,7 @@ class BinanceSocketManager:
                 return f"{endpoint_cfg['private']}/ws?listenKey={self.listen_key}"
             return f"{endpoint_cfg[stream_type]}/stream"
         else:
-            # spot / inverse / portfolio — legacy URL structure
+            # inverse / portfolio — legacy URL structure
             if stream_type == "private" and self.listen_key:
                 return f"{endpoint_cfg}/ws/{self.listen_key}"
             return f"{endpoint_cfg}/stream"
@@ -144,8 +172,11 @@ class BinanceSocketManager:
     def _build_reconnect_url(self, key: str) -> str:
         """Build the URL to use when reconnecting an existing connection.
 
-        For private connections the listenKey URL is rebuilt from scratch so
-        that any key refresh performed by _keepalive_task is picked up.
+        For SPOT private (WebSocket API) the URL is always the same fixed URL;
+        re-subscription is handled inside _connection_task.
+
+        For other private connections the listenKey URL is rebuilt from scratch
+        so that any key refresh performed by _keepalive_task is picked up.
 
         For market-data connections all currently subscribed streams are
         embedded in the ?streams= query parameter so that the server starts
@@ -171,22 +202,71 @@ class BinanceSocketManager:
             with trio.fail_after(_HEARTBEAT_TIMEOUT):
                 await ws.ping()
 
+    async def _subscribe_user_data(self, ws: trio_websocket.WebSocketConnection):
+        """Subscribe to the SPOT user data stream via the WebSocket API.
+
+        Sends userDataStream.subscribe.signature and waits for the server's
+        200 OK response.  Raises an exception if the subscription fails or
+        times out, which causes _connection_task to trigger a reconnect.
+        """
+        ts = int(time.time() * 1000) + self.client.timestamp_offset
+        sign_params = {"apiKey": self.client.API_KEY, "timestamp": ts}
+        signature = self.client.generate_ws_signature(sign_params)
+
+        req_id = randint(1, 2147483647)
+        msg = {
+            "id": req_id,
+            "method": "userDataStream.subscribe.signature",
+            "params": {
+                "apiKey": self.client.API_KEY,
+                "timestamp": ts,
+                "signature": signature,
+            },
+        }
+        with trio.fail_after(_SUBSCRIBE_TIMEOUT):
+            await ws.send_message(orjson.dumps(msg))
+            # Wait for the matching response; ignore any prior push events
+            # (there should be none on a fresh connection, but be defensive).
+            while True:
+                raw = await ws.get_message()
+                resp = orjson.loads(raw)
+                if resp.get("id") == req_id:
+                    if resp.get("status") != 200:
+                        raise Exception(
+                            f"userDataStream.subscribe.signature failed: "
+                            f"status={resp.get('status')}, error={resp.get('error')}"
+                        )
+                    return
+
     async def _connection_task(self, initial_url: str, key: str):
         """Long-running task that owns one WebSocket connection.
 
         Opens the connection, signals _connection_ready[key], then forwards
         every incoming message to the shared memory channel.
 
+        For the SPOT private connection (WebSocket API), the user data stream
+        subscription is established immediately after connecting and re-sent on
+        every reconnect.  Push events arrive wrapped as
+        {"subscriptionId": N, "event": {...}} and are unwrapped before being
+        forwarded to the channel.
+
         On any connection error (including a heartbeat timeout) the task waits
         with exponential back-off and reconnects automatically.  The outer
         nursery's cancel scope is the only way to stop the loop.
         """
+        is_spot_private = key == "private" and self.endpoint == "spot"
         attempt = 0
         while True:
             url = initial_url if attempt == 0 else self._build_reconnect_url(key)
             try:
                 async with open_websocket_url(url) as ws:
                     self._connections[key] = ws
+
+                    if is_spot_private:
+                        # Subscribe before signalling readiness so that callers
+                        # know the stream is actually active when they proceed.
+                        await self._subscribe_user_data(ws)
+
                     self._connection_ready[key].set()
                     attempt = 0  # reset counter after a successful connect
 
@@ -194,7 +274,16 @@ class BinanceSocketManager:
                         inner.start_soon(self._heartbeat_task, ws, key)
                         while True:
                             raw = await ws.get_message()
-                            await self._message_send.send(orjson.loads(raw))
+                            msg = orjson.loads(raw)
+                            if is_spot_private:
+                                # WebSocket API wraps push events:
+                                # {"subscriptionId": N, "event": {...}}
+                                # Control messages (e.g. subscription responses
+                                # for concurrent requests) have no "event" key.
+                                if "event" in msg:
+                                    await self._message_send.send(msg["event"])
+                            else:
+                                await self._message_send.send(msg)
 
             except trio.Cancelled:
                 # Outer nursery is shutting down — propagate immediately.
@@ -230,8 +319,12 @@ class BinanceSocketManager:
         No WebSocket connection is opened here.  Actual connections are created
         lazily by subscribe() based on which stream types are requested.
 
-        Exception: if self.listen_key is already set (user-data stream), the
-        private connection is opened immediately and the keepalive task starts.
+        Exceptions:
+        * For SPOT: if self.user_data is True, the private connection is opened
+          immediately via the WebSocket API (userDataStream.subscribe.signature).
+          No keepalive task is needed — the subscription lives with the connection.
+        * For other endpoints: if self.listen_key is set, the private connection
+          is opened immediately and the keepalive task starts.
         """
         try:
             self.URLS[self.alternative_net][self.endpoint]
@@ -248,9 +341,15 @@ class BinanceSocketManager:
 
         async with trio.open_nursery() as nursery:
             self._nursery = nursery
-            if self.listen_key:
-                # User-data streams push messages without a SUBSCRIBE handshake,
-                # so open the private connection immediately.
+            if self.endpoint == "spot" and self.user_data:
+                # SPOT user data stream: connect to the WebSocket API and
+                # subscribe via userDataStream.subscribe.signature.
+                url = self._build_url("private")
+                await self._open_connection("private", url, url)
+                # No keepalive needed — subscription persists with the connection.
+            elif self.listen_key:
+                # Futures / inverse / portfolio user data stream: connect to the
+                # legacy stream URL with the listenKey embedded.
                 url = self._build_url("private")
                 await self._open_connection("private", url, url)
                 nursery.start_soon(self._keepalive_task)
@@ -259,6 +358,11 @@ class BinanceSocketManager:
 
     async def _keepalive_task(self):
         """Extend the listenKey every 59 minutes to prevent server-side expiry.
+
+        Only used for futures / inverse / portfolio endpoints whose user data
+        streams are still identified by an HTTP-issued listenKey.  SPOT user
+        data streams no longer use listenKeys (retired 2026-02-20) and do not
+        need a keepalive.
 
         Each renewal attempt is retried up to _KEEPALIVE_MAX_RETRIES times
         (with a _KEEPALIVE_RETRY_DELAY second pause between attempts) before
@@ -271,9 +375,7 @@ class BinanceSocketManager:
             for attempt in range(1, _KEEPALIVE_MAX_RETRIES + 1):
                 try:
                     with trio.fail_after(5):
-                        if self.endpoint == "spot":
-                            await self.client.stream_keepalive()
-                        elif self.endpoint == "linear":
+                        if self.endpoint == "linear":
                             await self.client.futures_stream_keepalive()
                         elif self.endpoint == "inverse":
                             await self.client.futures_coin_stream_keepalive()

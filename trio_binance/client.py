@@ -265,6 +265,28 @@ class BaseClient:
             b64 = base64.b64encode(signature).decode()
             return quote(b64.replace("\n", ""), safe='')
 
+    def generate_ws_signature(self, data: Dict) -> str:
+        """Generate a signature for the WebSocket API (no URL-encoding for RSA/Ed25519)."""
+        ordered_data = self._order_params(data)
+        query_string = "&".join([f"{d[0]}={d[1]}" for d in ordered_data])
+        encoded = query_string.encode("ASCII")
+        if self.sign_style == "HMAC":
+            assert isinstance(self.API_SECRET, str)
+            m = hmac.new(
+                self.API_SECRET.encode("utf-8"),
+                encoded,
+                hashlib.sha256,
+            )
+            return m.hexdigest()
+        elif self.sign_style == "RSA":
+            assert isinstance(self.API_SECRET, RSAPrivateKey)
+            signature = self.API_SECRET.sign(encoded, padding.PKCS1v15(), hashes.SHA256())
+            return base64.b64encode(signature).decode().replace("\n", "")
+        else:  # Ed25519
+            assert isinstance(self.API_SECRET, Ed25519PrivateKey)
+            signature = self.API_SECRET.sign(encoded)
+            return base64.b64encode(signature).decode().replace("\n", "")
+
     @staticmethod
     def _order_params(data: Dict) -> List[Tuple[str, str]]:
         """Convert params to list with signature as last element
@@ -716,18 +738,6 @@ class AsyncClient(BaseClient):
         if network:
             params["network"] = network
         return await self._request_margin_api("get", "capital/deposit/address", True, data=params)
-
-    # User Stream Endpoints
-
-    async def stream_get_listen_key(self):
-        res = await self._post("userDataStream", True, data={})
-        return res["listenKey"]
-
-    async def stream_keepalive(self):
-        return await self._put("userDataStream", True, data={})
-
-    async def stream_close(self):
-        return await self._delete("userDataStream", False, data={})
 
     # Margin Trading Endpoints
     async def get_margin_account(self, **params):
